@@ -2044,7 +2044,8 @@ function renderProducts(cat = 'all') {
 
   const query = (document.getElementById('pos-search')?.value || '').toLowerCase();
   const items = state.productsCache.filter(p => {
-    const matchCat = cat === 'all' || p.cat === cat || cat === p.cat;
+    // Use .includes() so short tab keys like 'food' match full names like 'food & bev'
+    const matchCat = cat === 'all' || p.cat === cat || p.cat.includes(cat) || cat.includes(p.cat);
     const matchSearch = !query || p.name.toLowerCase().includes(query) || p.sku.toLowerCase().includes(query);
     return matchCat && matchSearch;
   });
@@ -4378,14 +4379,16 @@ document.addEventListener('DOMContentLoaded', () => {
   if (state.user) {
     initCharts();
     loadPOSProducts();
-    loadInventory().then(items => { _inventoryCache = items || []; });
+    loadInventory();
     loadCustomers();
-    loadDashboardKPIs();
-    setTimeout(() => {
-      drawSparkline('spark-revenue', [62,68,74,71,80,78,84], '#4F46E5');
-      drawSparkline('spark-profit', [22,28,32,30,35,34,36], '#10B981');
-      drawSparkline('spark-txn', [140,160,175,158,182,178,190], '#8B5CF6');
-      drawSparkline('spark-debt', [95,102,98,110,108,115,120], '#EF4444');
-    }, 200);
+    if (state.user.role === 'owner' || state.user.role === 'manager') {
+      loadDashboardKPIs();
+      setTimeout(() => {
+        drawSparkline('spark-revenue', [62,68,74,71,80,78,84], '#4F46E5');
+        drawSparkline('spark-profit', [22,28,32,30,35,34,36], '#10B981');
+        drawSparkline('spark-txn', [140,160,175,158,182,178,190], '#8B5CF6');
+        drawSparkline('spark-debt', [95,102,98,110,108,115,120], '#EF4444');
+      }, 200);
+    }
   }
 });
