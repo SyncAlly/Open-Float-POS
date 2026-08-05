@@ -96,6 +96,14 @@ async function handleLoginSubmit(e) {
   if (loginSuccess) console.log('[Login] Authenticated as', email);
 }
 
+function getDefaultViewForRole(role) {
+  const r = (role || 'cashier').toLowerCase();
+  if (r === 'cashier') return 'sales';
+  if (r === 'hr') return 'hr';
+  if (r === 'accountant') return 'accounting';
+  return 'dashboard';
+}
+
 function completeLogin() {
   const loginScreen = document.getElementById('login-screen');
   if (loginScreen) loginScreen.classList.add('hidden');
@@ -103,21 +111,25 @@ function completeLogin() {
   if (appShell) appShell.style.display = '';
   updateUserUI();
   setGreeting();
-  navTo('dashboard');
+
+  const startView = getDefaultViewForRole(state.user?.role);
+  navTo(startView);
   showToast(`Welcome back, ${state.user.name}!`);
 
   // Initialize charts and load live data now that the user is authenticated
   initCharts();
   loadPOSProducts();
-  loadInventory().then(items => { _inventoryCache = items || []; });
+  loadInventory();
   loadCustomers();
-  loadDashboardKPIs();
-  setTimeout(() => {
-    drawSparkline('spark-revenue', [62,68,74,71,80,78,84], '#4F46E5');
-    drawSparkline('spark-profit', [22,28,32,30,35,34,36], '#10B981');
-    drawSparkline('spark-txn', [140,160,175,158,182,178,190], '#8B5CF6');
-    drawSparkline('spark-debt', [95,102,98,110,108,115,120], '#EF4444');
-  }, 300);
+  if (state.user?.role === 'owner' || state.user?.role === 'manager') {
+    loadDashboardKPIs();
+    setTimeout(() => {
+      drawSparkline('spark-revenue', [62,68,74,71,80,78,84], '#4F46E5');
+      drawSparkline('spark-profit', [22,28,32,30,35,34,36], '#10B981');
+      drawSparkline('spark-txn', [140,160,175,158,182,178,190], '#8B5CF6');
+      drawSparkline('spark-debt', [95,102,98,110,108,115,120], '#EF4444');
+    }, 300);
+  }
 }
 
 function updateUserUI() {
@@ -141,15 +153,15 @@ function updateUserUI() {
 
 function applyRolePermissions() {
   if (!state.user) return;
-  const role = state.user.role || 'cashier';
+  const role = (state.user.role || 'cashier').toLowerCase();
 
   // Role permissions map: view IDs allowed for each role
   const permissions = {
     owner: ['*'],
     manager: ['*'],
-    cashier: ['dashboard', 'sales', 'inventory', 'customers', 'services', 'hire-purchase', 'z-reports'],
-    hr: ['dashboard', 'hr', 'employees'],
-    accountant: ['dashboard', 'accounting', 'receivables', 'suppliers', 'z-reports', 'procurement']
+    cashier: ['sales', 'inventory', 'crm', 'services', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
+    hr: ['hr'],
+    accountant: ['accounting', 'receivables', 'suppliers', 'z-reports', 'procurement']
   };
 
   const allowedViews = permissions[role] || permissions.cashier;
@@ -211,7 +223,8 @@ function checkSession() {
       state.token = savedToken;
       if (loginScreen) loginScreen.classList.add('hidden');
       updateUserUI();
-      navTo('dashboard');
+      const startView = getDefaultViewForRole(state.user?.role);
+      navTo(startView);
     } catch (e) {
       doLogout();
     }
@@ -398,6 +411,22 @@ function updateTime() {
 
 /* NAVIGATION */
 function navTo(viewId) {
+  if (state.user) {
+    const role = (state.user.role || 'cashier').toLowerCase();
+    const permissions = {
+      owner: ['*'],
+      manager: ['*'],
+      cashier: ['sales', 'inventory', 'crm', 'services', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
+      hr: ['hr'],
+      accountant: ['accounting', 'receivables', 'suppliers', 'z-reports', 'procurement']
+    };
+    const allowed = permissions[role] || permissions.cashier;
+    if (!allowed.includes('*') && !allowed.includes(viewId)) {
+      showToast(`Access denied: ${role.toUpperCase()} role cannot access ${viewId}`);
+      viewId = getDefaultViewForRole(role);
+    }
+  }
+
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.sidebar-nav .nav-item[data-view]').forEach(n => {
     if (n.getAttribute('data-view') === viewId) n.classList.add('active');
