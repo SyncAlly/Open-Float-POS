@@ -1,0 +1,8 @@
+# .gitignore — OpenFloat POS X
+.env
+backend/db/*.db
+node_modules/
+*.db
+*.log
+.DS_Store
+Thumbs.db

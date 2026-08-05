@@ -1,0 +1,20 @@
+{
+  "name": "openfloat-pos-x-backend",
+  "version": "1.0.0",
+  "description": "Backend API service for OpenFloat POS X",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^4.22.2",
+    "express-rate-limit": "^8.6.2",
+    "jsonwebtoken": "^9.0.3",
+    "sql.js": "^1.14.1"
+  }
+}
