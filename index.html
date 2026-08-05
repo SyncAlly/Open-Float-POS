@@ -659,7 +659,8 @@
         <div class="view-header">
           <div><h1>Inventory Management</h1><p>Live stock levels and warehouse tracking</p></div>
           <div class="view-actions">
-            <button class="btn-sm secondary" onclick="showToast('Exporting inventory CSV...')">Export CSV</button>
+            <button class="btn-sm secondary" onclick="exportInventoryCSV()">Export CSV</button>
+            <button class="btn-sm secondary" onclick="openUploadModal('products')">Upload CSV</button>
             <button class="btn-sm" onclick="openProductModal()">+ Add Product</button>
           </div>
         </div>
@@ -1648,8 +1649,8 @@
           </div>
         </div>
 
-        <div class="upload-zone" onclick="document.getElementById('file-upload-input').click()">
-          <input type="file" id="file-upload-input" accept=".csv, .xlsx" style="display:none;" onchange="handleFileSelect(this)" />
+        <div class="upload-zone" onclick="document.getElementById('upload-file-input').click()">
+          <input type="file" id="upload-file-input" accept=".csv, .xlsx" style="display:none;" onchange="handleFileSelect(this)" />
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" style="margin-bottom:8px;color:var(--brand);"><path d="M7 16a4 4 0 01-.88-7.9 5 5 0 119.76-1.78A4 4 0 0117 16h-1m-4-7v8m0-8l-3 3m3-3l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <div style="font-weight:600;color:var(--text-primary);" id="upload-drop-text">Click or Drag &amp; Drop CSV / Excel File</div>
           <div style="font-size:11.5px;margin-top:4px;">Supports SKU/Service Code, Name, Category, Price, Stock &amp; Warehouse ID</div>

@@ -685,14 +685,23 @@ async function loadDashboardKPIs() {
 
 async function loadInventory() {
   const tbody = document.getElementById('inventory-tbody');
-  if (!tbody) return;
   try {
     const data = await apiGet('/api/inventory');
     const items = data.data || [];
-    if (items.length === 0) { tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text-muted)">No products found. Add products to get started.</td></tr>'; return; }
-    renderInventoryRows(items);
+    _inventoryCache = items;
+    if (tbody) {
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text-muted)">No products found. Add products to get started.</td></tr>';
+      } else {
+        renderInventoryRows(items);
+      }
+    }
+    return items;
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text-muted)">Backend offline — start the server to view inventory.</td></tr>';
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text-muted)">Backend offline — start the server to view inventory.</td></tr>';
+    }
+    return [];
   }
 }
 
@@ -2546,6 +2555,59 @@ function filterInventory() {
   }
 }
 
+async function exportInventoryCSV() {
+  let items = _inventoryCache;
+  if (!items || !items.length) {
+    items = await loadInventory();
+  }
+  if (!items || !items.length) {
+    if (state.productsCache && state.productsCache.length) {
+      items = state.productsCache.map(p => ({
+        name: p.name,
+        sku: p.sku,
+        category_name: p.cat || 'General',
+        stock_qty: p.stock ?? 0,
+        unit: 'pcs',
+        buy_price: 0,
+        sell_price: p.price ?? 0,
+        reorder_level: 10,
+        supplier_name: '—',
+        expiry_date: '—'
+      }));
+    }
+  }
+  if (!items || !items.length) {
+    showToast('No inventory items to export');
+    return;
+  }
+  const headers = ['Name', 'SKU', 'Category', 'Stock Qty', 'Unit', 'Buy Price (KES)', 'Sell Price (KES)', 'Status', 'Supplier', 'Expiry Date'];
+  const rows = items.map(i => {
+    const stockStatus = (i.stock_qty === 0 || i.stock === 0) ? 'OUT' : ((i.stock_qty ?? i.stock ?? 0) <= (i.reorder_level || 10)) ? 'LOW' : 'OK';
+    return [
+      `"${(i.name || '').replace(/"/g, '""')}"`,
+      `"${(i.sku || '').replace(/"/g, '""')}"`,
+      `"${(i.category_name || i.cat || '').replace(/"/g, '""')}"`,
+      i.stock_qty ?? i.stock ?? 0,
+      `"${(i.unit || 'pcs').replace(/"/g, '""')}"`,
+      i.buy_price || 0,
+      i.sell_price || i.price || 0,
+      stockStatus,
+      `"${(i.supplier_name || '').replace(/"/g, '""')}"`,
+      `"${i.expiry_date || ''}"`
+    ].join(',');
+  });
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `inventory_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('Inventory exported to CSV');
+}
+
 /* DASHBOARD & CHARTS */
 async function updateDashboard() {
   const period = document.getElementById('period-select')?.value || 'month';
@@ -3936,8 +3998,10 @@ async function processUploadBatch() {
     try {
       const res = await apiPost('/api/upload', { upload_type: type, store_warehouse: store, items: demoItems });
       showToast(res.message || `Successfully imported batch for ${store}`);
+      if (type === 'services') loadServices(); else loadInventory();
     } catch (e) {
       showToast(`Batch upload completed for ${store}`);
+      if (type === 'services') loadServices(); else loadInventory();
     }
     closeModal('upload-modal');
     return;
