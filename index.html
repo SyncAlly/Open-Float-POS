@@ -449,7 +449,7 @@
               <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v6l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.4"/></svg>
               Held Orders <span class="badge-count" id="held-count">0</span>
             </button>
-            <button class="btn-sm secondary" onclick="toggleSaleHistory()" id="sale-history-btn">Sale History</button>
+            <button class="btn-sm secondary" onclick="openSaleHistoryModal()">Sale History</button>
             <button class="btn-sm secondary" onclick="newSession()">New Session</button>
           </div>
         </div>
@@ -615,44 +615,7 @@
         </div>
       </div>
 
-      <!-- Sale History Panel (toggled) -->
-      <div id="sale-history-panel" class="panel-card hidden" style="margin-top:0;">
-        <div class="panel-header" style="margin-bottom:14px;">
-          <h3>Sale History</h3>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <input type="text" id="txn-search" class="form-field-input" placeholder="Search ref, customer, cashier..." oninput="filterSaleHistory()" style="width:220px;height:34px;font-size:13px;" />
-            <input type="date" id="txn-date" class="form-field-input" onchange="filterSaleHistory()" style="height:34px;font-size:13px;" />
-            <select id="txn-method" class="form-field-input" onchange="filterSaleHistory()" style="height:34px;font-size:13px;">
-              <option value="">All Methods</option>
-              <option value="cash">Cash</option>
-              <option value="mpesa">M-Pesa</option>
-              <option value="card">Card</option>
-              <option value="credit">Credit</option>
-            </select>
-            <button class="btn-sm secondary" onclick="loadSaleHistory()">Refresh</button>
-          </div>
-        </div>
-        <div style="overflow-x:auto;">
-          <table class="data-table" id="txn-table">
-            <thead>
-              <tr>
-                <th>Ref No</th>
-                <th>Date &amp; Time</th>
-                <th>Customer</th>
-                <th>Cashier</th>
-                <th>Items</th>
-                <th>Method</th>
-                <th>Total (KES)</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="txn-tbody">
-              <tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">Loading transactions...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+
 
       <!-- ════════════ VIEW: INVENTORY ════════════ -->
       <div id="view-inventory" class="view">
@@ -1783,6 +1746,88 @@
       <div class="modal-foot" style="gap:8px;margin-top:14px;">
         <button class="btn-sm secondary" onclick="closeModal('product-modal')">Cancel</button>
         <button class="btn-sm" onclick="submitProductModal()">Save Product</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPTIMIZED SALES HISTORY MODAL -->
+  <div class="modal-overlay hidden" id="sale-history-modal" onclick="closeModal('sale-history-modal')">
+    <div class="modal-box" style="max-width:940px;width:95%;max-height:90vh;display:flex;flex-direction:column;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div>
+          <h3 style="margin:0;">Sales History &amp; Orders</h3>
+          <p style="font-size:12px;color:var(--text-muted);margin:2px 0 0 0;">Filter past transactions, review sales performance, and view itemized receipts</p>
+        </div>
+        <button class="modal-close" onclick="closeModal('sale-history-modal')">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <!-- Quick KPI Stats Bar -->
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;gap:10px;">
+        <div class="kpi-card" style="padding:10px 14px;"><div class="kpi-label" style="font-size:11px;">Total Sales Count</div><div class="kpi-value" id="sh-kpi-count" style="font-size:18px;">—</div></div>
+        <div class="kpi-card" style="padding:10px 14px;"><div class="kpi-label" style="font-size:11px;">Total Revenue</div><div class="kpi-value green" id="sh-kpi-revenue" style="font-size:18px;">—</div></div>
+        <div class="kpi-card" style="padding:10px 14px;"><div class="kpi-label" style="font-size:11px;">Cash Collections</div><div class="kpi-value" id="sh-kpi-cash" style="font-size:18px;">—</div></div>
+        <div class="kpi-card" style="padding:10px 14px;"><div class="kpi-label" style="font-size:11px;">M-Pesa Collections</div><div class="kpi-value blue" id="sh-kpi-mpesa" style="font-size:18px;">—</div></div>
+      </div>
+
+      <!-- Filters Row -->
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+        <input type="text" id="txn-search" class="form-field-input" placeholder="Search ref, customer, cashier..." oninput="filterSaleHistory()" style="flex:1;min-width:180px;height:36px;font-size:13px;" />
+        <input type="date" id="txn-date" class="form-field-input" onchange="filterSaleHistory()" style="height:36px;font-size:13px;" />
+        <select id="txn-method" class="form-field-input" onchange="filterSaleHistory()" style="height:36px;font-size:13px;">
+          <option value="">All Payment Methods</option>
+          <option value="cash">Cash</option>
+          <option value="mpesa">M-Pesa</option>
+          <option value="card">Card</option>
+          <option value="credit">Credit / Account</option>
+        </select>
+        <button class="btn-sm secondary" onclick="loadSaleHistory()">Refresh</button>
+        <button class="btn-sm secondary" onclick="exportSaleHistoryCSV()">Export CSV</button>
+      </div>
+
+      <!-- Data Table Wrap -->
+      <div style="overflow-y:auto;max-height:480px;border:1px solid var(--border);border-radius:var(--radius-sm);">
+        <table class="data-table" id="txn-table" style="margin:0;">
+          <thead style="position:sticky;top:0;background:var(--bg-card);z-index:2;">
+            <tr>
+              <th>Ref No</th>
+              <th>Date &amp; Time</th>
+              <th>Customer</th>
+              <th>Cashier</th>
+              <th>Method</th>
+              <th>Total (KES)</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="txn-tbody">
+            <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">Loading transactions...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-foot" style="margin-top:14px;justify-content:flex-end;">
+        <button class="btn-sm secondary" onclick="closeModal('sale-history-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRANSACTION DETAIL & ITEM BREAKDOWN MODAL -->
+  <div class="modal-overlay hidden" id="txn-detail-modal" onclick="closeModal('txn-detail-modal')">
+    <div class="modal-box" style="max-width:540px;width:95%;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <h3 id="txn-detail-title">Transaction Receipt</h3>
+        <button class="modal-close" onclick="closeModal('txn-detail-modal')">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div id="txn-detail-content" style="display:flex;flex-direction:column;gap:12px;max-height:70vh;overflow-y:auto;padding-right:4px;">
+        <div style="text-align:center;color:var(--text-muted);padding:20px;">Loading receipt details...</div>
+      </div>
+      <div class="modal-foot" style="gap:8px;margin-top:16px;">
+        <button class="btn-sm secondary" onclick="closeModal('txn-detail-modal')">Close</button>
+        <button class="btn-sm" onclick="printCurrentTxnReceipt()">Print Thermal Receipt</button>
       </div>
     </div>
   </div>

@@ -2190,61 +2190,73 @@ function holdOrder() {
 }
 
 /* ── SALE HISTORY ─────────────────────────────────────────────── */
+/* OPTIMIZED SALES HISTORY & RECEIPT DETAILED VIEW */
 let _txnCache = [];
+let _activeTxnDetail = null;
 
-function toggleSaleHistory() {
-  const panel = document.getElementById('sale-history-panel');
-  const btn   = document.getElementById('sale-history-btn');
-  if (!panel) return;
-  const isHidden = panel.classList.contains('hidden');
-  panel.classList.toggle('hidden', !isHidden);
-  if (btn) btn.textContent = isHidden ? 'Hide History' : 'Sale History';
-  if (isHidden) loadSaleHistory();
+function openSaleHistoryModal() {
+  const modal = document.getElementById('sale-history-modal');
+  if (modal) modal.classList.remove('hidden');
+  loadSaleHistory();
 }
 
 async function loadSaleHistory() {
   const tbody = document.getElementById('txn-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">Loading...</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">Loading transactions...</td></tr>';
   try {
     const data = await apiGet('/api/sales/transactions');
     _txnCache = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+    updateSaleHistoryKPIs(_txnCache);
     renderSaleHistory(_txnCache);
   } catch {
-    // Show demo data if API fails
+    // Show demo fallback data if API fails
     _txnCache = [
-      { ref_no:'TXN-0041', created_at: new Date().toISOString(), customer_name:'Walk-in', cashier_name:'James Mwangi', item_count:3, payment_method:'cash',   total:4850, status:'completed' },
-      { ref_no:'TXN-0040', created_at: new Date(Date.now()-3600000).toISOString(), customer_name:'Amina Khalid', cashier_name:'James Mwangi', item_count:1, payment_method:'mpesa',  total:38500, status:'completed' },
-      { ref_no:'TXN-0039', created_at: new Date(Date.now()-7200000).toISOString(), customer_name:'Kama Superstore', cashier_name:'David Kamau', item_count:12, payment_method:'credit', total:142000, status:'completed' },
-      { ref_no:'TXN-0038', created_at: new Date(Date.now()-86400000).toISOString(), customer_name:'Walk-in', cashier_name:'James Mwangi', item_count:2, payment_method:'card',   total:7200, status:'completed' },
+      { id: 1, ref:'TXN-20260805-A101', created_at: new Date().toISOString(), customer_name:'Walk-in', cashier_name:'James Mwangi', payment_method:'cash', subtotal:4500, vat:350, total:4850, status:'completed' },
+      { id: 2, ref:'TXN-20260805-B204', created_at: new Date(Date.now()-3600000).toISOString(), customer_name:'Amina Khalid', cashier_name:'James Mwangi', payment_method:'mpesa', subtotal:33190, vat:5310, total:38500, status:'completed' },
+      { id: 3, ref:'TXN-20260805-C309', created_at: new Date(Date.now()-7200000).toISOString(), customer_name:'Kama Superstore', cashier_name:'David Kamau', payment_method:'credit', subtotal:122410, vat:19590, total:142000, status:'completed' },
+      { id: 4, ref:'TXN-20260804-D412', created_at: new Date(Date.now()-86400000).toISOString(), customer_name:'Walk-in', cashier_name:'James Mwangi', payment_method:'card', subtotal:6206, vat:994, total:7200, status:'completed' },
     ];
+    updateSaleHistoryKPIs(_txnCache);
     renderSaleHistory(_txnCache);
   }
+}
+
+function updateSaleHistoryKPIs(txns) {
+  const count = txns.length;
+  const revenue = txns.reduce((sum, t) => sum + (t.total || 0), 0);
+  const cash = txns.filter(t => (t.payment_method || '').toLowerCase() === 'cash').reduce((sum, t) => sum + (t.total || 0), 0);
+  const mpesa = txns.filter(t => (t.payment_method || '').toLowerCase() === 'mpesa').reduce((sum, t) => sum + (t.total || 0), 0);
+
+  const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setKpi('sh-kpi-count', count);
+  setKpi('sh-kpi-revenue', `KES ${fmt(revenue)}`);
+  setKpi('sh-kpi-cash', `KES ${fmt(cash)}`);
+  setKpi('sh-kpi-mpesa', `KES ${fmt(mpesa)}`);
 }
 
 function renderSaleHistory(txns) {
   const tbody = document.getElementById('txn-tbody');
   if (!tbody) return;
   if (!txns.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">No transactions found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">No transactions found matching criteria.</td></tr>';
     return;
   }
-  const methodBadge = { cash:'badge-green', mpesa:'badge-blue', card:'badge-green', credit:'badge-amber' };
+  const methodBadge = { cash:'badge-green', mpesa:'badge-blue', card:'badge-purple', credit:'badge-amber' };
   tbody.innerHTML = txns.map(t => {
-    const dt = t.created_at ? new Date(t.created_at).toLocaleString('en-KE', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '-';
+    const dt = t.created_at ? new Date(t.created_at).toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '-';
     const method = (t.payment_method || 'cash').toLowerCase();
     const badgeCls = methodBadge[method] || 'badge-green';
-    const transactionRef = t.ref || t.ref_no || t.id;
+    const transactionRef = t.ref || t.ref_no || `TXN-${t.id}`;
+    const txId = t.id || transactionRef;
     return `<tr>
-      <td><strong>${transactionRef}</strong></td>
-      <td>${dt}</td>
-      <td>${t.customer_name || 'Walk-in'}</td>
-      <td>${t.cashier_name || '-'}</td>
-      <td>${t.item_count || '-'}</td>
-      <td><span class="badge ${badgeCls}" style="text-transform:capitalize;">${method}</span></td>
-      <td><strong>KES ${fmt(t.total || 0)}</strong></td>
-      <td><span class="badge badge-green">Completed</span></td>
-      <td><button class="btn-sm secondary" onclick="viewTxnReceipt('${transactionRef}')">View</button></td>
+      <td><strong class="mono" style="font-size:12.5px;">${transactionRef}</strong></td>
+      <td style="font-size:12px;color:var(--text-muted);">${dt}</td>
+      <td><strong>${t.customer_name || 'Walk-in'}</strong></td>
+      <td>${t.cashier_name || 'System Cashier'}</td>
+      <td><span class="badge ${badgeCls}" style="text-transform:uppercase;font-size:10px;">${method}</span></td>
+      <td><strong style="color:var(--text-primary);">KES ${fmt(t.total || 0)}</strong></td>
+      <td><span class="badge badge-green">COMPLETED</span></td>
+      <td><button class="btn-sm tiny secondary" onclick="viewTxnDetail('${txId}')">View Details</button></td>
     </tr>`;
   }).join('');
 }
@@ -2267,29 +2279,149 @@ function filterSaleHistory() {
   renderSaleHistory(filtered);
 }
 
-function viewTxnReceipt(ref) {
-  showToast(`Loading receipt for ${ref}...`);
-  // Open a simple print-friendly receipt in a new tab if available
-  const txn = _txnCache.find(t => (t.ref || t.ref_no || t.id) == ref);
-  if (!txn) return;
-  const html = `<html><head><title>Receipt ${ref}</title>
-  <style>body{font-family:monospace;max-width:320px;margin:20px auto;font-size:13px;} h2{text-align:center;} hr{border:1px dashed #999;} .row{display:flex;justify-content:space-between;margin:4px 0;} .total{font-weight:bold;font-size:15px;} </style></head>
+async function viewTxnDetail(txId) {
+  const modal = document.getElementById('txn-detail-modal');
+  const container = document.getElementById('txn-detail-content');
+  if (modal) modal.classList.remove('hidden');
+  if (container) container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);">Loading line items...</div>';
+
+  let txn = null;
+  try {
+    const res = await apiGet(`/api/sales/transactions/${txId}`);
+    txn = res.data || res;
+  } catch (e) {
+    txn = _txnCache.find(t => t.id == txId || (t.ref || t.ref_no) == txId);
+  }
+
+  if (!txn) {
+    if (container) container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--red);">Transaction details not found.</div>';
+    return;
+  }
+
+  _activeTxnDetail = txn;
+  const dt = txn.created_at ? new Date(txn.created_at).toLocaleString('en-KE') : new Date().toLocaleString('en-KE');
+  const ref = txn.ref || txn.ref_no || `TXN-${txn.id}`;
+  const items = txn.items && txn.items.length ? txn.items : [
+    { product_name: 'Product Items', qty: 1, unit_price: txn.subtotal || txn.total, line_total: txn.subtotal || txn.total }
+  ];
+
+  container.innerHTML = `
+    <div style="background:var(--bg-main);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;font-family:monospace;font-size:12.5px;color:var(--text-primary);">
+      <div style="text-align:center;border-bottom:1px dashed var(--border);padding-bottom:10px;margin-bottom:10px;">
+        <h3 style="margin:0;font-size:16px;font-weight:700;">OPENFLOAT POS X</h3>
+        <p style="margin:4px 0 0 0;font-size:11px;color:var(--text-muted);">${txn.branch_name || 'Nairobi Main Branch'} · POS Terminal</p>
+        <p style="margin:2px 0 0 0;font-size:11px;color:var(--text-muted);">${dt}</p>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Receipt Ref:</span><strong>${ref}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Customer:</span><span>${txn.customer_name || 'Walk-in Customer'}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Cashier:</span><span>${txn.cashier_name || 'Staff Cashier'}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;"><span>Payment Method:</span><span style="text-transform:uppercase;font-weight:600;">${txn.payment_method || 'CASH'}</span></div>
+
+      <div style="border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);padding:8px 0;margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;font-weight:700;margin-bottom:6px;">
+          <span>Item</span><span style="text-align:center;">Qty x Price</span><span style="text-align:right;">Total</span>
+        </div>
+        ${items.map(it => `
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;margin-bottom:4px;">
+            <span>${it.product_name || it.name || 'Item'}</span>
+            <span style="text-align:center;">${it.qty} x ${fmt(it.unit_price || it.price || 0)}</span>
+            <span style="text-align:right;">KES ${fmt(it.line_total || (it.qty * (it.unit_price || 0)))}</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Subtotal:</span><span>KES ${fmt(txn.subtotal || txn.total || 0)}</span></div>
+      ${txn.discount ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px;color:var(--green);"><span>Discount:</span><span>- KES ${fmt(txn.discount)}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--text-muted);"><span>VAT (16% Included):</span><span>KES ${fmt(txn.vat || 0)}</span></div>
+      <div style="display:flex;justify-content:space-between;border-top:2px solid var(--text-primary);padding-top:6px;font-size:14px;font-weight:700;">
+        <span>TOTAL AMOUNT:</span><span>KES ${fmt(txn.total || 0)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function printCurrentTxnReceipt() {
+  if (!_activeTxnDetail) {
+    showToast('No receipt selected to print');
+    return;
+  }
+  const txn = _activeTxnDetail;
+  const ref = txn.ref || txn.ref_no || `TXN-${txn.id}`;
+  const dt = txn.created_at ? new Date(txn.created_at).toLocaleString('en-KE') : new Date().toLocaleString('en-KE');
+  const items = txn.items && txn.items.length ? txn.items : [
+    { product_name: 'Product Order', qty: 1, unit_price: txn.total, line_total: txn.total }
+  ];
+
+  const html = `<html><head><title>Receipt - ${ref}</title>
+  <style>
+    body { font-family: monospace; max-width: 300px; margin: 10px auto; font-size: 12px; color: #000; }
+    h2 { text-align: center; margin: 0; font-size: 16px; }
+    p { text-align: center; margin: 2px 0; font-size: 11px; }
+    hr { border: none; border-top: 1px dashed #000; margin: 8px 0; }
+    .row { display: flex; justify-content: space-between; margin: 3px 0; }
+    .bold { font-weight: bold; }
+    .total { font-size: 14px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; }
+  </style></head>
   <body>
     <h2>OPENFLOAT POS X</h2>
-    <p style="text-align:center;font-size:11px;">${new Date(txn.created_at).toLocaleString('en-KE')}</p>
+    <p>${txn.branch_name || 'Nairobi Main Store'}</p>
+    <p>${dt}</p>
     <hr>
-    <div class="row"><span>Ref:</span><span>${txn.ref || txn.ref_no || ref}</span></div>
+    <div class="row"><span>Ref:</span><span class="bold">${ref}</span></div>
     <div class="row"><span>Customer:</span><span>${txn.customer_name || 'Walk-in'}</span></div>
-    <div class="row"><span>Cashier:</span><span>${txn.cashier_name || '-'}</span></div>
-    <div class="row"><span>Payment:</span><span style="text-transform:capitalize;">${txn.payment_method || 'cash'}</span></div>
+    <div class="row"><span>Cashier:</span><span>${txn.cashier_name || 'Staff'}</span></div>
+    <div class="row"><span>Method:</span><span class="bold">${(txn.payment_method || 'cash').toUpperCase()}</span></div>
     <hr>
-    <div class="row total"><span>TOTAL</span><span>KES ${fmt(txn.total || 0)}</span></div>
+    ${items.map(it => `
+      <div class="row">
+        <span>${it.qty}x ${it.product_name || 'Item'}</span>
+        <span>KES ${fmt(it.line_total || (it.qty * (it.unit_price || 0)))}</span>
+      </div>
+    `).join('')}
     <hr>
-    <p style="text-align:center;font-size:11px;">Thank you for shopping with us!</p>
+    <div class="row"><span>Subtotal:</span><span>KES ${fmt(txn.subtotal || txn.total || 0)}</span></div>
+    <div class="row"><span>VAT (16%):</span><span>KES ${fmt(txn.vat || 0)}</span></div>
+    <div class="row total"><span>TOTAL PAID:</span><span>KES ${fmt(txn.total || 0)}</span></div>
+    <hr>
+    <p style="margin-top:12px;">Thank you for your business!</p>
     <script>window.print();<\/script>
   </body></html>`;
-  const w = window.open('', '_blank', 'width=400,height=500');
-  if (w) { w.document.write(html); w.document.close(); }
+
+  const w = window.open('', '_blank', 'width=380,height=500');
+  if (w) {
+    w.document.write(html);
+    w.document.close();
+  }
+}
+
+function exportSaleHistoryCSV() {
+  if (!_txnCache || !_txnCache.length) {
+    showToast('No sales transactions to export');
+    return;
+  }
+  const headers = ['Ref No', 'Date & Time', 'Customer', 'Cashier', 'Payment Method', 'Subtotal', 'VAT', 'Total Amount', 'Status'];
+  const rows = _txnCache.map(t => [
+    `"${(t.ref || t.ref_no || t.id || '').replace(/"/g, '""')}"`,
+    `"${t.created_at ? new Date(t.created_at).toISOString() : ''}"`,
+    `"${(t.customer_name || 'Walk-in').replace(/"/g, '""')}"`,
+    `"${(t.cashier_name || '').replace(/"/g, '""')}"`,
+    `"${(t.payment_method || 'cash').toUpperCase()}"`,
+    t.subtotal || 0,
+    t.vat || 0,
+    t.total || 0,
+    'COMPLETED'
+  ].join(','));
+
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `sales_history_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('Sales history exported to CSV');
 }
 function openHeldOrders() {
   const list = document.getElementById('held-list');
