@@ -320,6 +320,16 @@ async function querySTKStatus(req, res) {
     };
 
     const result = await daraja('POST', '/mpesa/stkpushquery/v1/query', payload, token);
+    
+    // If Safaricom confirms successful payment, update DB automatically
+    if (result.ResultCode === '0' || result.ResultCode === 0) {
+      const db = await getDb();
+      await updateMpesaPayment(db, checkout_request_id, 'completed', result.MpesaReceiptNumber || null, result.ResultDesc);
+    } else if (result.ResultCode && result.ResultCode !== '0') {
+      const db = await getDb();
+      await updateMpesaPayment(db, checkout_request_id, 'failed', null, result.ResultDesc);
+    }
+
     res.json({ success: true, ...result });
 
   } catch (err) {

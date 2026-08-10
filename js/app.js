@@ -2578,14 +2578,35 @@ async function triggerSTK() {
     const pollTimer = setInterval(async () => {
       attempts++;
       try {
-        const statusRes = await apiGet(`/api/mpesa/status/${checkoutId}`);
+        let statusRes = await apiGet(`/api/mpesa/status/${checkoutId}`);
+
+        // Active Safaricom Direct Query fallback every 2nd attempt if callback didn't arrive yet
+        if (statusRes.status === 'pending' && attempts % 2 === 0) {
+          try {
+            const darajaQuery = await apiGet(`/api/mpesa/query/${checkoutId}`);
+            if (darajaQuery.ResultCode === '0' || darajaQuery.ResultCode === 0) {
+              statusRes = {
+                status: 'completed',
+                mpesa_receipt_no: darajaQuery.MpesaReceiptNumber || 'CONFIRMED'
+              };
+            } else if (darajaQuery.ResultCode && darajaQuery.ResultCode !== '0' && !darajaQuery.ResultDesc?.includes('being processed')) {
+              statusRes = {
+                status: 'failed',
+                result_desc: darajaQuery.ResultDesc
+              };
+            }
+          } catch (e) {
+            // Ignore query error, fallback to normal polling
+          }
+        }
 
         if (statusRes.status === 'completed') {
           clearInterval(pollTimer);
-          if (statusEl) statusEl.textContent = `Payment confirmed! M-Pesa Ref: ${statusRes.mpesa_receipt_no}`;
-          showToast(`M-Pesa payment confirmed — ${statusRes.mpesa_receipt_no}`);
+          const receiptNo = statusRes.mpesa_receipt_no || 'MPESA_OK';
+          if (statusEl) statusEl.textContent = `Payment confirmed! M-Pesa Ref: ${receiptNo}`;
+          showToast(`M-Pesa payment confirmed — ${receiptNo}`);
           if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Send STK Push'; }
-          state._mpesaReceiptNo = statusRes.mpesa_receipt_no;
+          state._mpesaReceiptNo = receiptNo;
           processPayment();
 
         } else if (statusRes.status === 'failed') {
