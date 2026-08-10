@@ -24,9 +24,10 @@ async function login(req, res) {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials.' });
 
+    const secret = process.env.JWT_SECRET || 'openfloat_secret';
     const token = jwt.sign(
       { id: user.id, name: user.name, email: user.email, role: user.role, branch_id: user.branch_id },
-      JWT_SECRET,
+      secret,
       { expiresIn: JWT_EXPIRES }
     );
 

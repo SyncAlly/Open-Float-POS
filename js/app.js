@@ -367,10 +367,16 @@ async function apiGet(path) {
     e.code = 'NETWORK_ERROR';
     throw e;
   }
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
     const e = new Error('AUTH_ERROR');
     e.code = 'AUTH_ERROR';
-    e.status = res.status;
+    e.status = 401;
+    throw e;
+  }
+  if (res.status === 403) {
+    const e = new Error('ACCESS_DENIED');
+    e.code = 'ACCESS_DENIED';
+    e.status = 403;
     throw e;
   }
   if (!res.ok) {
@@ -510,16 +516,11 @@ async function loadPOSProducts() {
     }));
     renderProducts('all');
   } catch (e) {
-    if (e.code === 'AUTH_ERROR') {
-      // Token expired or invalid — force re-login
-      if (grid && state.productsCache.length === 0) {
-        grid.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">Session expired. <a href="#" onclick="doLogout()" style="color:#4F46E5;text-decoration:underline">Sign in again</a> to load products.</div>';
-      }
-      showToast('Session expired — please sign in again');
-      setTimeout(() => doLogout(), 1500);
-    } else if (grid && state.productsCache.length === 0) {
-      // Genuine offline / server down
-      grid.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">Backend offline — <a href="#" onclick="loadPOSProducts()" style="color:#4F46E5;text-decoration:underline">Retry</a> after starting the server.</div>';
+    if (grid && state.productsCache.length === 0) {
+      grid.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">No products yet. <a href="#" onclick="loadPOSProducts()" style="color:#4F46E5;text-decoration:underline">Retry</a>.</div>';
+    }
+    if (e.code === 'NETWORK_ERROR') {
+      console.warn('[POS] Server offline — retrying products later.');
     }
   }
 }

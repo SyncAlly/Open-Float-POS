@@ -82,8 +82,10 @@ async function resetForNewClient() {
 
     exec(db, `
       INSERT INTO users (name, email, password_hash, role, branch_id)
-      VALUES ('Business Admin', 'admin@openfloat.com', ?, 'owner', 1);
-    `, [passwordHash]);
+      VALUES 
+        ('Business Admin', 'admin@openfloat.com', ?, 'owner', 1),
+        ('Business Owner', 'owner@openfloat.com', ?, 'owner', 1);
+    `, [passwordHash, passwordHash]);
 
     console.log(`  ✓ Created admin: admin@openfloat.com / ${defaultPassword}`);
   } catch (e) {
