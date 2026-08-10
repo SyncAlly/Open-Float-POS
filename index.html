@@ -1567,18 +1567,15 @@
   </div>
 
   <!-- BRANCH SWITCHER MODAL -->
-  <div class="modal-overlay hidden" id="branch-modal" onclick="closeModal('branch-modal')">
+  <div class="modal-overlay hidden" id="branch-switcher-modal" onclick="closeModal('branch-switcher-modal')">
     <div class="modal-box" onclick="event.stopPropagation()">
-      <div class="modal-head"><h3>Select Operating Branch</h3><button class="modal-close" onclick="closeModal('branch-modal')">
+      <div class="modal-head"><h3>Select Operating Branch</h3><button class="modal-close" onclick="closeModal('branch-switcher-modal')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button></div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <div class="branch-opt-card" onclick="selectBranch('Nairobi Main Branch')"><strong>Nairobi Main Branch</strong><span>HQ · Kimathi Street</span></div>
-        <div class="branch-opt-card" onclick="selectBranch('Westlands Branch')"><strong>Westlands Branch</strong><span>Sarit Centre Hub</span></div>
-        <div class="branch-opt-card" onclick="selectBranch('Mombasa CBD Branch')"><strong>Mombasa CBD Branch</strong><span>Nkrumah Road</span></div>
-        <div class="branch-opt-card" onclick="selectBranch('Kisumu Branch')"><strong>Kisumu Branch</strong><span>Oginga Odinga Way</span></div>
+      <div id="branch-switcher-list" style="display:flex;flex-direction:column;gap:8px;max-height:350px;overflow-y:auto;">
+        <div style="text-align:center;padding:16px;color:var(--text-muted);">Loading branches…</div>
       </div>
-      <div class="modal-foot"><button class="btn-sm secondary" onclick="closeModal('branch-modal')">Cancel</button></div>
+      <div class="modal-foot"><button class="btn-sm secondary" onclick="closeModal('branch-switcher-modal')">Cancel</button></div>
     </div>
   </div>
 

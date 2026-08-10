@@ -4189,13 +4189,33 @@ function clearAIChat() {
 }
 
 /* BRANCH SWITCHER (topbar) */
-function _openBranchSwitcher() {
-  document.getElementById('branch-modal')?.classList.remove('hidden');
+async function _openBranchSwitcher() {
+  document.getElementById('branch-switcher-modal')?.classList.remove('hidden');
+  const container = document.getElementById('branch-switcher-list');
+  if (!container) return;
+  try {
+    const data = await apiGet('/api/branches');
+    const branches = data.data || [];
+    _branchesCache = branches;
+    if (!branches.length) {
+      container.innerHTML = '<div style="color:var(--text-muted);padding:16px;text-align:center;">No branches configured yet.</div>';
+      return;
+    }
+    container.innerHTML = branches.map(b => `
+      <div class="branch-opt-card" onclick="selectBranch('${(b.name || '').replace(/'/g, "\\'")}')">
+        <strong>${b.name}</strong>
+        <span>${b.location || 'Branch Location'}</span>
+      </div>
+    `).join('');
+  } catch (e) {
+    container.innerHTML = '<div style="color:var(--text-muted);padding:16px;text-align:center;">Could not load branches.</div>';
+  }
 }
 
 function selectBranch(branchName) {
-  document.getElementById('branch-name').textContent = branchName;
-  closeModal('branch-modal');
+  const el = document.getElementById('branch-name');
+  if (el) el.textContent = branchName;
+  closeModal('branch-switcher-modal');
   showToast(`Switched active branch to ${branchName}`);
 }
 
@@ -4883,6 +4903,9 @@ function exportDeliveriesCSV() {
   document.body.appendChild(link); link.click(); document.body.removeChild(link);
   showToast('Deliveries exported to CSV');
 }
+
+
+
 
 
 document.addEventListener('DOMContentLoaded', () => {
