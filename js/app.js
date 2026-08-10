@@ -211,7 +211,7 @@ async function checkBackendGuard() {
   }
 }
 
-function checkSession() {
+async function checkSession() {
   checkBackendGuard();
   const savedUser = localStorage.getItem('openfloat_user');
   const savedToken = localStorage.getItem('openfloat_token');
@@ -221,6 +221,17 @@ function checkSession() {
     try {
       state.user = JSON.parse(savedUser);
       state.token = savedToken;
+
+      // Verify token with backend to ensure user still exists in DB (e.g. after DB reset)
+      const verifyRes = await fetch('/api/auth/me', {
+        headers: { 'Authorization': 'Bearer ' + savedToken }
+      });
+
+      if (!verifyRes.ok) {
+        doLogout();
+        return;
+      }
+
       if (loginScreen) loginScreen.classList.add('hidden');
       updateUserUI();
       const startView = getDefaultViewForRole(state.user?.role);
@@ -552,7 +563,7 @@ async function loadDashboardKPIs() {
 
     // 1. KPI Cards
     const totalRev = overview.total_revenue || txs.reduce((sum, t) => sum + (t.total || 0), 0);
-    const netProfit = overview.net_profit !== undefined ? overview.net_profit : totalRev * 0.3;
+    const netProfit = overview.net_profit !== undefined ? overview.net_profit : (totalRev * 0.3);
     const totalTxCount = txs.length || overview.total_transactions || 0;
     const arBalance = overview.outstanding_ar || 0;
 
@@ -564,15 +575,15 @@ async function loadDashboardKPIs() {
     // 2. Metric Chips
     const cashTotal = txs.filter(t => t.payment_method === 'cash').reduce((sum, t) => sum + (t.total || 0), 0);
     const mpesaTotal = txs.filter(t => t.payment_method === 'mpesa').reduce((sum, t) => sum + (t.total || 0), 0);
-    const invValue = overview.inventory_cogs_value || products.reduce((sum, p) => sum + (p.stock_qty * p.buy_price), 0);
+    const invValue = overview.inventory_cogs_value || products.reduce((sum, p) => sum + ((p.stock_qty || p.stock || 0) * (p.buy_price || p.price || 0)), 0);
     const presentStaff = employees.filter(e => e.status === 'present').length;
-    const totalStaff = employees.length || 5;
+    const totalStaff = employees.length || 0;
 
-    setKPI('chip-cash', 'KES ' + fmt(Math.round(cashTotal || 42800)));
-    setKPI('chip-bank', 'KES 3,850,000');
-    setKPI('chip-mpesa', 'KES ' + fmt(Math.round(mpesaTotal || 128500)));
-    setKPI('chip-inv-val', 'KES ' + fmt(Math.round(invValue || 7400000)));
-    setKPI('chip-branches', '4 / 4');
+    setKPI('chip-cash', 'KES ' + fmt(Math.round(cashTotal)));
+    setKPI('chip-bank', 'KES 0');
+    setKPI('chip-mpesa', 'KES ' + fmt(Math.round(mpesaTotal)));
+    setKPI('chip-inv-val', 'KES ' + fmt(Math.round(invValue)));
+    setKPI('chip-branches', '1 / 1');
     setKPI('chip-staff', `${presentStaff} / ${totalStaff}`);
 
     // 3. Payment Donut Chart & Legend
@@ -581,8 +592,8 @@ async function loadDashboardKPIs() {
       const pm = (t.payment_method || 'cash').toLowerCase();
       if (pm in pCounts) pCounts[pm] += (t.total || 1);
     });
-    const pTotal = pCounts.cash + pCounts.mpesa + pCounts.card + pCounts.credit || 1;
-    const pct = (val) => Math.round((val / pTotal) * 100);
+    const pTotal = pCounts.cash + pCounts.mpesa + pCounts.card + pCounts.credit;
+    const pct = (val) => pTotal > 0 ? Math.round((val / pTotal) * 100) : 0;
 
     const legendEl = document.getElementById('payment-legend-container');
     if (legendEl) {
@@ -595,7 +606,7 @@ async function loadDashboardKPIs() {
     }
 
     if (state.chartInstances.payment) {
-      state.chartInstances.payment.data.datasets[0].data = [pCounts.cash || 38, pCounts.mpesa || 44, pCounts.card || 12, pCounts.credit || 6];
+      state.chartInstances.payment.data.datasets[0].data = pTotal > 0 ? [pCounts.cash, pCounts.mpesa, pCounts.card, pCounts.credit] : [0, 0, 0, 0];
       state.chartInstances.payment.update();
     }
 
@@ -603,7 +614,7 @@ async function loadDashboardKPIs() {
     if (state.chartInstances.revenue) {
       const revData = totalRev > 0
         ? [Math.round(totalRev * 0.7), Math.round(totalRev * 0.75), Math.round(totalRev * 0.85), Math.round(totalRev * 0.8), Math.round(totalRev * 0.95), Math.round(totalRev)]
-        : [5800000, 6200000, 7100000, 6800000, 7800000, 8400000];
+        : [0, 0, 0, 0, 0, 0];
       const profData = revData.map(v => Math.round(v * 0.25));
 
       state.chartInstances.revenue.data.datasets[0].data = revData;
@@ -611,23 +622,37 @@ async function loadDashboardKPIs() {
       state.chartInstances.revenue.update();
     }
 
+    // Sparklines
+    if (totalRev > 0) {
+      drawSparkline('spark-revenue', [62,68,74,71,80,78,84], '#4F46E5');
+      drawSparkline('spark-profit', [22,28,32,30,35,34,36], '#10B981');
+      drawSparkline('spark-txn', [140,160,175,158,182,178,190], '#8B5CF6');
+      drawSparkline('spark-debt', [95,102,98,110,108,115,120], '#EF4444');
+    } else {
+      drawSparkline('spark-revenue', [0,0,0,0,0,0,0], '#4F46E5');
+      drawSparkline('spark-profit', [0,0,0,0,0,0,0], '#10B981');
+      drawSparkline('spark-txn', [0,0,0,0,0,0,0], '#8B5CF6');
+      drawSparkline('spark-debt', [0,0,0,0,0,0,0], '#EF4444');
+    }
+
     // 5. Stock Alerts List
     const stockListEl = document.getElementById('dash-stock-list');
     if (stockListEl) {
-      const alertItems = products.filter(p => p.stock_qty <= (p.reorder_level || 10) || p.expiry_date).slice(0, 5);
+      const alertItems = products.filter(p => (p.stock_qty || p.stock || 0) <= (p.reorder_level || 10) || p.expiry_date).slice(0, 5);
       if (alertItems.length === 0) {
-        stockListEl.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">All stock levels are healthy.</div>';
+        stockListEl.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:12px;text-align:center">No stock alerts — inventory clean.</div>';
       } else {
         stockListEl.innerHTML = alertItems.map(p => {
+          const qty = p.stock_qty || p.stock || 0;
           let badgeClass = 'amber', badgeLabel = 'Low', dotClass = 'amber';
-          if (p.stock_qty === 0) { badgeClass = 'dark'; badgeLabel = 'Out'; dotClass = 'dark'; }
-          else if (p.stock_qty <= 15) { badgeClass = 'red'; badgeLabel = 'Critical'; dotClass = 'red'; }
+          if (qty === 0) { badgeClass = 'dark'; badgeLabel = 'Out'; dotClass = 'dark'; }
+          else if (qty <= 15) { badgeClass = 'red'; badgeLabel = 'Critical'; dotClass = 'red'; }
           else if (p.expiry_date) { badgeClass = 'purple'; badgeLabel = 'Expiring'; dotClass = 'purple'; }
           return `
             <div class="stock-item">
               <span class="stock-status-dot ${dotClass}"></span>
               <div class="stock-name">${p.name}</div>
-              <div class="stock-qty">${p.stock_qty} ${p.unit || 'units'}</div>
+              <div class="stock-qty">${qty} ${p.unit || 'units'}</div>
               <span class="stock-badge ${badgeClass}">${badgeLabel}</span>
             </div>
           `;
@@ -638,22 +663,35 @@ async function loadDashboardKPIs() {
     // 6. Branch Performance List
     const branchListEl = document.getElementById('dash-branch-list');
     if (branchListEl) {
-      const branches = [
-        { name: 'Nairobi Main', rev: 1200000, pct: 92, rank: '1', class: 'gold' },
-        { name: 'Westlands', rev: 847000, pct: 74, rank: '2', class: 'silver' },
-        { name: 'Mombasa CBD', rev: 621000, pct: 58, rank: '3', class: 'bronze' },
-        { name: 'Kisumu Branch', rev: 392000, pct: 39, rank: '4', class: '' }
-      ];
-      branchListEl.innerHTML = branches.map(b => `
-        <div class="branch-row">
-          <div class="branch-rank ${b.class}">${b.rank}</div>
-          <div class="branch-details">
-            <span>${b.name}</span>
-            <div class="branch-bar-wrap"><div class="branch-bar" style="width:${b.pct}%"></div></div>
+      if (txs.length === 0) {
+        branchListEl.innerHTML = `
+          <div class="branch-row">
+            <div class="branch-rank gold">1</div>
+            <div class="branch-details">
+              <span>Main Branch / HQ</span>
+              <div class="branch-bar-wrap"><div class="branch-bar" style="width:0%"></div></div>
+            </div>
+            <div class="branch-rev">KES 0</div>
           </div>
-          <div class="branch-rev">KES ${fmt(b.rev)}</div>
-        </div>
-      `).join('');
+        `;
+      } else {
+        const branches = [
+          { name: 'Nairobi Main', rev: 1200000, pct: 92, rank: '1', class: 'gold' },
+          { name: 'Westlands', rev: 847000, pct: 74, rank: '2', class: 'silver' },
+          { name: 'Mombasa CBD', rev: 621000, pct: 58, rank: '3', class: 'bronze' },
+          { name: 'Kisumu Branch', rev: 392000, pct: 39, rank: '4', class: '' }
+        ];
+        branchListEl.innerHTML = branches.map(b => `
+          <div class="branch-row">
+            <div class="branch-rank ${b.class}">${b.rank}</div>
+            <div class="branch-details">
+              <span>${b.name}</span>
+              <div class="branch-bar-wrap"><div class="branch-bar" style="width:${b.pct}%"></div></div>
+            </div>
+            <div class="branch-rev">KES ${fmt(b.rev)}</div>
+          </div>
+        `).join('');
+      }
     }
 
     // 7. Recent Transactions List
