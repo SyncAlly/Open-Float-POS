@@ -216,16 +216,15 @@ async function checkSession() {
       state.user = JSON.parse(savedUser);
       state.token = savedToken;
 
-      // Verify token with backend if not a demo token
-      if (!savedToken.startsWith('demo_')) {
-        const verifyRes = await fetch('/api/auth/me', {
-          headers: { 'Authorization': 'Bearer ' + savedToken }
-        });
+      // Always verify token with backend — this catches stale sessions after db:reset
+      const verifyRes = await fetch('/api/auth/me', {
+        headers: { 'Authorization': 'Bearer ' + savedToken }
+      });
 
-        if (!verifyRes.ok) {
-          doLogout();
-          return;
-        }
+      if (!verifyRes.ok) {
+        // Token invalid or user no longer exists in DB → force re-login
+        doLogout();
+        return;
       }
 
       if (loginScreen) loginScreen.classList.add('hidden');
@@ -233,12 +232,14 @@ async function checkSession() {
       const startView = getDefaultViewForRole(state.user?.role);
       navTo(startView);
     } catch (e) {
+      // Network error during verification → still show login for safety
       doLogout();
     }
   } else {
     if (loginScreen) loginScreen.classList.remove('hidden');
   }
 }
+
 
 function doLogout() {
   // Clear persisted session

@@ -1,11 +1,10 @@
 /**
  * OpenFloat POS X — Clean Client Onboarding Reset Script
- * 
- * Clears out all demo sales, transactions, test products, inventory logs, 
- * dummy customers, and sample employees while retaining table structures 
- * and setting up an initial admin account for the new client.
- * 
- * Usage: node backend/db/clean_reset.js
+ *
+ * Clears out ALL demo/test data from every transactional table,
+ * then creates a fresh admin account for the new client.
+ *
+ * Usage: npm run db:reset
  */
 
 require('dotenv').config();
@@ -19,47 +18,65 @@ async function resetForNewClient() {
 
   const db = await getDb();
 
-  // List of tables to wipe completely
-  const transactionalTables = [
+  // ── Step 1: Wipe ALL transactional / operational tables ──────────────────
+  const allTables = [
+    // Sales & Transactions
+    'transaction_items',
+    'transactions',
     'sales',
     'sale_items',
+    // Payments
     'mpesa_payments',
+    // Inventory
+    'products',
     'stock_movements',
     'inventory_movements',
+    // Customers & Credit
+    'customers',
     'hire_purchase_payments',
+    'hire_purchase',
     'hire_purchase_agreements',
     'receivables',
     'accounts_receivable',
-    'customers',
+    // HR
+    'employees',
     'payroll',
     'attendance',
-    'employees',
-    'z_reports',
-    'logistics_trips',
+    // Procurement & Purchasing
+    'purchase_request_items',
+    'purchase_requests',
     'purchase_orders',
     'purchase_order_items',
-    'products',
+    // Suppliers
+    'suppliers',
+    // Accounting
+    'journal_entries',
+    // Services
     'services',
-    'suppliers'
+    // Logistics
+    'deliveries',
+    'logistics_trips',
+    // Reports
+    'z_reports',
   ];
 
-  console.log('[1/4] Wiping demo transactions & operational data...');
-  transactionalTables.forEach(table => {
+  console.log('[1/4] Wiping ALL transactional data...');
+  allTables.forEach(table => {
     try {
       exec(db, `DELETE FROM ${table};`);
       exec(db, `DELETE FROM sqlite_sequence WHERE name='${table}';`);
-      console.log(`  ✓ Cleared table: ${table}`);
+      console.log(`  ✓ Cleared: ${table}`);
     } catch (e) {
-      // Table may not exist or sequence absent; ignore safely
+      // Table may not exist — safely ignore
     }
   });
 
+  // ── Step 2: Reset Users ──────────────────────────────────────────────────
   console.log('\n[2/4] Resetting Users & Security Roles...');
   try {
     exec(db, `DELETE FROM users;`);
     exec(db, `DELETE FROM sqlite_sequence WHERE name='users';`);
 
-    // Create default initial Admin / Owner account for the new business
     const defaultPassword = process.env.INITIAL_ADMIN_PASSWORD || 'admin123';
     const passwordHash = bcrypt.hashSync(defaultPassword, 10);
 
@@ -68,12 +85,13 @@ async function resetForNewClient() {
       VALUES ('Business Admin', 'admin@openfloat.com', ?, 'owner', 1);
     `, [passwordHash]);
 
-    console.log(`  ✓ Created primary Admin account: admin@openfloat.com (Password: ${defaultPassword})`);
+    console.log(`  ✓ Created admin: admin@openfloat.com / ${defaultPassword}`);
   } catch (e) {
     console.error('  ✕ Error resetting users:', e.message);
   }
 
-  console.log('\n[3/4] Resetting Default Store Branch...');
+  // ── Step 3: Reset Branches ───────────────────────────────────────────────
+  console.log('\n[3/4] Resetting Branch...');
   try {
     exec(db, `DELETE FROM branches;`);
     exec(db, `DELETE FROM sqlite_sequence WHERE name='branches';`);
@@ -86,6 +104,7 @@ async function resetForNewClient() {
     console.error('  ✕ Error resetting branches:', e.message);
   }
 
+  // ── Step 4: Reset Default Settings ──────────────────────────────────────
   console.log('\n[4/4] Setting default Business Profile...');
   try {
     const defaultSettings = [
@@ -97,7 +116,7 @@ async function resetForNewClient() {
       ['receipt_header', 'Welcome to Our Store'],
       ['receipt_footer', 'Thank you for shopping with us!'],
       ['printer', 'Generic ESC/POS Thermal Printer'],
-      ['scanner', 'HID Keyboard Emulation']
+      ['scanner', 'HID Keyboard Emulation'],
     ];
 
     defaultSettings.forEach(([key, val]) => {
@@ -109,13 +128,16 @@ async function resetForNewClient() {
   }
 
   console.log('\n──────────────────────────────────────────────────');
-  console.log('  ✅ SUCCESS! Database wiped clean & prepared for client.');
-  console.log('  Admin Credentials:');
+  console.log('  ✅ SUCCESS! Database is clean and ready.');
+  console.log('  Login Credentials:');
   console.log('    Email:    admin@openfloat.com');
   console.log('    Password: admin123');
+  console.log('\n  IMPORTANT: Clear your browser cache / localStorage');
+  console.log('  or open in Incognito mode before signing in!');
   console.log('──────────────────────────────────────────────────\n');
 }
 
 resetForNewClient().catch(err => {
   console.error('Reset failed:', err);
+  process.exit(1);
 });

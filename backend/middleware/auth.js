@@ -13,10 +13,9 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Access denied. No token provided.' });
   }
 
-  // Handle demo token fallback in dev/testing
+  // Reject demo tokens — they must log in with a real account
   if (token.startsWith('demo_')) {
-    req.user = { id: 1, name: 'Admin / Owner', email: 'owner@openfloat.com', role: 'owner', branch_id: 1 };
-    return next();
+    return res.status(401).json({ error: 'Demo session expired. Please sign in.' });
   }
 
   try {
@@ -27,5 +26,6 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired token.' });
   }
 }
+
 
 module.exports = { requireAuth };
