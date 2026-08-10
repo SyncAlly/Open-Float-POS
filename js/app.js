@@ -3979,27 +3979,42 @@ function initCRMCharts(customers = []) {
   const c = document.getElementById('crmChart');
   if (!c) return;
 
-  const regCount = customers.filter(cu => (cu.segment || '').toLowerCase() === 'regular').length;
-  const b2bCount = customers.filter(cu => (cu.segment || '').toLowerCase() === 'b2b').length;
-  const vipCount = customers.filter(cu => (cu.segment || '').toLowerCase() === 'vip').length;
-  const riskCount = customers.filter(cu => cu.segment === 'churn_risk' || (cu.created_at && (new Date() - new Date(cu.created_at)) > 60*24*3600*1000)).length;
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+
+  const regCount = customers.filter(cu => (cu.segment || 'regular').toLowerCase() === 'regular').length;
+  const b2bCount = customers.filter(cu => (cu.segment || '').toLowerCase() === 'b2b').length;
+  const vipCount = customers.filter(cu => (cu.segment || '').toLowerCase() === 'vip').length;
+  const riskCount = customers.filter(cu => cu.segment === 'churn_risk' || cu.segment === 'lapsed').length;
   const newCount = customers.filter(cu => cu.created_at && new Date(cu.created_at) >= sevenDaysAgo).length;
 
   if (state.chartInstances.crm) {
-    state.chartInstances.crm.destroy();
+    state.chartInstances.crm.data.datasets[0].data = [regCount, b2bCount, vipCount, riskCount, newCount];
+    state.chartInstances.crm.update();
+  } else {
+    const d = getChartDefaults();
+    state.chartInstances.crm = new Chart(c, {
+      type: 'bar',
+      data: {
+        labels: ['Regular Retail', 'B2B Corporate', 'VIP Loyalty', 'At Risk', 'New'],
+        datasets: [{
+          label: 'Customers',
+          data: [regCount, b2bCount, vipCount, riskCount, newCount],
+          backgroundColor: ['#4F46E5','#10B981','#8B5CF6','#EF4444','#F59E0B'],
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: d.gridColor }, ticks: { color: d.textColor } },
+          y: { grid: { color: d.gridColor }, ticks: { color: d.textColor, precision: 0 } }
+        }
+      }
+    });
   }
-
-  const d = getChartDefaults();
-  state.chartInstances.crm = new Chart(c, {
-    type: 'bar',
-    data: {
-      labels: ['Regular Retail', 'B2B Corporate', 'VIP Loyalty', 'At Risk', 'New'],
-      datasets: [{ label: 'Customers', data: [regCount, b2bCount, vipCount, riskCount, newCount], backgroundColor: ['#4F46E5','#10B981','#8B5CF6','#EF4444','#F59E0B'], borderRadius: 4 }]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: d.gridColor }, ticks: { color: d.textColor } }, y: { grid: { color: d.gridColor }, ticks: { color: d.textColor } } } }
-  });
 }
 
 function drawSparkline(id, data, color) {
