@@ -2596,9 +2596,12 @@ async function triggerSTK() {
 
         } else if (attempts >= maxAttempts) {
           clearInterval(pollTimer);
-          if (statusEl) statusEl.textContent = 'Payment confirmation timed out. Check M-Pesa on customer phone.';
-          showToast('M-Pesa confirmation timed out', 'error');
-          if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Send STK Push'; }
+          if (statusEl) statusEl.textContent = 'Timed out — if customer paid, enter receipt below.';
+          showToast('Timed out — enter M-Pesa receipt manually if paid', 'error');
+          if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Resend STK Push'; }
+          // Show manual confirmation panel
+          const manualPanel = document.getElementById('mpesa-manual-confirm');
+          if (manualPanel) manualPanel.style.display = 'block';
         } else {
           // Still pending
           const dots = '.'.repeat((attempts % 3) + 1);
@@ -2614,6 +2617,21 @@ async function triggerSTK() {
     showToast('STK Push error: ' + err.message, 'error');
     if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Send STK Push'; }
   }
+}
+
+function manualMpesaConfirm() {
+  const ref = (document.getElementById('mpesa-manual-ref')?.value || '').trim().toUpperCase();
+  if (!ref) {
+    showToast('Please enter the M-Pesa receipt number from the customer\'s message');
+    return;
+  }
+  state._mpesaReceiptNo = ref;
+  const statusEl = document.getElementById('stk-status');
+  if (statusEl) statusEl.textContent = `Payment manually confirmed. M-Pesa Ref: ${ref}`;
+  const manualPanel = document.getElementById('mpesa-manual-confirm');
+  if (manualPanel) manualPanel.style.display = 'none';
+  showToast(`M-Pesa payment confirmed — ${ref}`);
+  processPayment();
 }
 
 let _lastReceiptData = null;

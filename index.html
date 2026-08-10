@@ -576,6 +576,18 @@
               </div>
               <button class="stk-btn" onclick="triggerSTK()">Send STK Push</button>
               <div class="stk-status" id="stk-status">Ready — enter phone and send prompt</div>
+
+              <!-- Manual confirmation fallback -->
+              <div id="mpesa-manual-confirm" style="display:none;margin-top:6px;border-top:1px dashed var(--border);padding-top:8px;">
+                <label class="pay-label" style="margin-bottom:4px;display:block;">M-Pesa Receipt No (if timed out)</label>
+                <div style="display:flex;gap:6px;">
+                  <div class="pay-input-wrap" style="flex:1;">
+                    <span class="pay-currency">REF</span>
+                    <input type="text" id="mpesa-manual-ref" placeholder="e.g. QFH9128391" style="text-transform:uppercase;" />
+                  </div>
+                  <button class="stk-btn" style="padding:6px 10px;font-size:11px;white-space:nowrap;" onclick="manualMpesaConfirm()">Confirm</button>
+                </div>
+              </div>
             </div>
 
             <!-- Card Form -->
