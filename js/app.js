@@ -758,6 +758,7 @@ async function loadInventory() {
     const data = await apiGet('/api/inventory');
     const items = data.data || [];
     _inventoryCache = items;
+    updateInventoryKPIs(items);
     if (tbody) {
       if (items.length === 0) {
         tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text-muted)">No products found. Add products to get started.</td></tr>';
@@ -767,11 +768,44 @@ async function loadInventory() {
     }
     return items;
   } catch (e) {
+    updateInventoryKPIs([]);
     if (tbody) {
       tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text-muted)">Backend offline — start the server to view inventory.</td></tr>';
     }
     return [];
   }
+}
+
+function updateInventoryKPIs(items) {
+  let healthy = 0, reorder = 0, out = 0, dead = 0, expiring = 0;
+  const now = new Date();
+  const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  items.forEach(i => {
+    const qty = i.stock_qty || i.stock || 0;
+    const reorderLevel = i.reorder_level || 10;
+    if (qty === 0) {
+      out++;
+    } else if (qty <= reorderLevel) {
+      reorder++;
+    } else {
+      healthy++;
+    }
+
+    if (i.expiry_date) {
+      const exp = new Date(i.expiry_date);
+      if (!isNaN(exp.getTime()) && exp <= sevenDaysFromNow) {
+        expiring++;
+      }
+    }
+  });
+
+  const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = fmt(val); };
+  setKpi('inv-kpi-healthy', healthy);
+  setKpi('inv-kpi-reorder', reorder);
+  setKpi('inv-kpi-out', out);
+  setKpi('inv-kpi-dead', dead);
+  setKpi('inv-kpi-expiring', expiring);
 }
 
 function renderInventoryRows(items) {
