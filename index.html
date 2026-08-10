@@ -1045,7 +1045,29 @@
                   <option value="manual">Manual Key Lock Only</option>
                 </select>
               </div>
+        <div class="panel-card" style="margin-top:20px;">
+          <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <h3>Store Branches &amp; Locations</h3>
+              <p style="font-size:12px;color:var(--text-muted);margin-top:2px;">Manage store branches, HQ, and physical locations for staff assignment</p>
             </div>
+            <button class="btn-sm" onclick="openBranchModal()">+ Add Branch</button>
+          </div>
+          <div class="data-table-wrap" style="margin-top:12px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Branch Name</th>
+                  <th>Location / Address</th>
+                  <th>Phone Number</th>
+                  <th>Assigned Staff</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="branches-tbody">
+                <!-- Rendered dynamically from /api/branches -->
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -2294,6 +2316,37 @@
       <div class="modal-foot">
         <button class="btn-sm secondary" onclick="closeModal('customize-dashboard-modal')">Cancel</button>
         <button class="btn-sm" onclick="saveDashboardCustomization()">Save Layout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STORE BRANCH MODAL -->
+  <div class="modal-overlay hidden" id="branch-modal" onclick="closeModal('branch-modal')">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:440px">
+      <div class="modal-head">
+        <h3 id="branch-modal-title">Add Store Branch</h3>
+        <button class="modal-close" onclick="closeModal('branch-modal')">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <input type="hidden" id="branch-modal-id" />
+      <div style="display:flex;flex-direction:column;gap:12px;padding:4px 0 8px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Branch Name *</label>
+          <input type="text" id="branch-modal-name" class="form-field-input" placeholder="e.g. Westlands Branch, Kisumu Store" style="width:100%;" />
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Location / Address</label>
+          <input type="text" id="branch-modal-location" class="form-field-input" placeholder="e.g. Sarit Centre, 2nd Floor" style="width:100%;" />
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Phone Number</label>
+          <input type="text" id="branch-modal-phone" class="form-field-input" placeholder="+254 700 000 000" style="width:100%;" />
+        </div>
+      </div>
+      <div class="modal-foot" style="gap:8px;margin-top:14px;">
+        <button class="btn-sm secondary" onclick="closeModal('branch-modal')">Cancel</button>
+        <button class="btn-sm" onclick="submitBranchModal()">Save Branch</button>
       </div>
     </div>
   </div>

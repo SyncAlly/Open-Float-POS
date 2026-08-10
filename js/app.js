@@ -3552,6 +3552,18 @@ function searchEmployees(q) {
   renderEmployeeRows(filtered);
 }
 
+async function populateEmpBranchDropdown(selectedId = null) {
+  const el = document.getElementById('emp-branch');
+  if (!el) return;
+  try {
+    const res = await apiGet('/api/branches');
+    const branches = res.data || [];
+    el.innerHTML = branches.map(b => `<option value="${b.id}" ${b.id == selectedId ? 'selected' : ''}>${b.name}</option>`).join('');
+  } catch(e) {
+    el.innerHTML = '<option value="1">Nairobi Main</option>';
+  }
+}
+
 function openEmployeeModal(id = null) {
   const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val || ''; };
   const titleEl = document.getElementById('emp-modal-title');
@@ -4332,6 +4344,128 @@ async function loadSettings() {
     if (e.code !== 'AUTH_ERROR') {
       showToast('Using default settings — could not reach server');
     }
+  }
+  // Always load branches table in settings view
+  loadBranches();
+}
+
+/* ─── BRANCH MANAGEMENT ──────────────────────────────────────────────────── */
+let _branchesCache = [];
+
+async function loadBranches() {
+  const tbody = document.getElementById('branches-tbody');
+  try {
+    const data = await apiGet('/api/branches');
+    _branchesCache = data.data || [];
+    if (!tbody) return;
+    if (!_branchesCache.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">No branches yet. Click "+ Add Branch" to create one.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = _branchesCache.map(b => `<tr>
+      <td><strong>${b.name}</strong></td>
+      <td style="color:var(--text-muted)">${b.location || '—'}</td>
+      <td>${b.phone || '—'}</td>
+      <td><span class="badge badge-green">${b.employee_count || 0} staff</span></td>
+      <td>
+        <button class="btn-sm tiny secondary" onclick="openBranchModal(${b.id})">Edit</button>
+        ${b.id !== 1 ? `<button class="btn-sm tiny" style="background:var(--red);color:#fff;margin-left:4px" onclick="deleteBranch(${b.id},'${b.name}')">Delete</button>` : '<span style="font-size:11px;color:var(--text-muted);margin-left:6px">HQ (protected)</span>'}
+      </td>
+    </tr>`).join('');
+  } catch (e) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Could not load branches.</td></tr>';
+  }
+}
+
+function openBranchModal(id = null) {
+  const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val || ''; };
+  setVal('branch-modal-id', '');
+  setVal('branch-modal-name', '');
+  setVal('branch-modal-location', '');
+  setVal('branch-modal-phone', '');
+  const titleEl = document.getElementById('branch-modal-title');
+
+  if (id) {
+    const b = _branchesCache.find(x => x.id == id);
+    if (b) {
+      if (titleEl) titleEl.textContent = 'Edit Branch';
+      setVal('branch-modal-id', b.id);
+      setVal('branch-modal-name', b.name);
+      setVal('branch-modal-location', b.location);
+      setVal('branch-modal-phone', b.phone);
+    }
+  } else {
+    if (titleEl) titleEl.textContent = 'Add Store Branch';
+  }
+  document.getElementById('branch-modal')?.classList.remove('hidden');
+}
+
+async function submitBranchModal() {
+  const id = document.getElementById('branch-modal-id')?.value.trim();
+  const name = document.getElementById('branch-modal-name')?.value.trim();
+  const location = document.getElementById('branch-modal-location')?.value.trim();
+  const phone = document.getElementById('branch-modal-phone')?.value.trim();
+
+  if (!name) { showToast('Branch name is required'); return; }
+
+  try {
+    let res;
+    if (id) {
+      res = await fetch(`/api/branches/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (state.token || '') },
+        body: JSON.stringify({ name, location, phone })
+      }).then(r => r.json());
+    } else {
+      res = await apiPost('/api/branches', { name, location, phone });
+    }
+    if (res.success) {
+      showToast(id ? `Branch "${name}" updated!` : `Branch "${name}" added!`);
+      closeModal('branch-modal');
+      loadBranches();
+      // Refresh branch dropdown in employee modal
+      await populateEmpBranchDropdown();
+    } else {
+      showToast(res.error || 'Failed to save branch');
+    }
+  } catch (e) {
+    showToast('Error saving branch');
+  }
+}
+
+async function deleteBranch(id, name) {
+  if (!confirm(`Delete branch "${name}"?\nAll staff assigned here will be moved to Main HQ.`)) return;
+  try {
+    const res = await fetch(`/api/branches/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + (state.token || '') }
+    }).then(r => r.json());
+    if (res.success) {
+      showToast(`Branch "${name}" deleted`);
+      loadBranches();
+      await populateEmpBranchDropdown();
+    } else {
+      showToast(res.error || 'Could not delete branch');
+    }
+  } catch (e) {
+    showToast('Error deleting branch');
+  }
+}
+
+async function populateEmpBranchDropdown(selectedId = null) {
+  const sel = document.getElementById('emp-branch');
+  if (!sel) return;
+  try {
+    if (!_branchesCache.length) {
+      const data = await apiGet('/api/branches');
+      _branchesCache = data.data || [];
+    }
+    const current = selectedId || sel.value;
+    sel.innerHTML = _branchesCache.map(b =>
+      `<option value="${b.id}" ${String(b.id) === String(current) ? 'selected' : ''}>${b.name}</option>`
+    ).join('');
+  } catch (e) {
+    // Keep existing options on error
   }
 }
 
