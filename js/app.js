@@ -2512,17 +2512,107 @@ function calcSplit() {
   document.getElementById('split-remaining').textContent = `KES ${fmt(remaining)}.00`;
 }
 
-function triggerSTK() {
-  const phone = document.getElementById('mpesa-phone')?.value;
-  const status = document.getElementById('stk-status');
-  if (status) {
-    status.textContent = `Sending prompt to +254 ${phone}...`;
-    setTimeout(() => { status.textContent = 'Prompt delivered to customer device...'; }, 1000);
-    setTimeout(() => {
-      status.textContent = 'M-Pesa payment received! Ref: QFH9128391';
-      showToast('M-Pesa payment confirmed');
-      processPayment();
-    }, 2500);
+async function triggerSTK() {
+  const phoneInput = document.getElementById('mpesa-phone');
+  const statusEl   = document.getElementById('stk-status');
+  const stkBtn     = document.querySelector('.stk-btn');
+  const phone      = phoneInput?.value?.trim();
+
+  if (!phone) {
+    showToast('Please enter a phone number');
+    return;
+  }
+
+  // Calculate total from current cart
+  const subtotal = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const total    = subtotal + Math.round(subtotal * 0.16);
+
+  if (total <= 0) {
+    showToast('Cart is empty — nothing to charge');
+    return;
+  }
+
+  // Generate a transaction ref
+  const txRef = 'TXN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' +
+                Math.random().toString(36).substring(2,6).toUpperCase();
+
+  // Update UI — sending
+  if (statusEl) statusEl.textContent = `Sending STK prompt to ${phone}...`;
+  if (stkBtn)   { stkBtn.disabled = true; stkBtn.textContent = 'Sending...'; }
+
+  try {
+    // 1. Initiate STK Push
+    const pushRes = await apiPost('/api/mpesa/stk-push', {
+      phone,
+      amount:          total,
+      transaction_ref: txRef,
+      account_ref:     'OpenFloat POS'
+    });
+
+    if (!pushRes.success) {
+      throw new Error(pushRes.error || 'STK Push failed');
+    }
+
+    const checkoutId = pushRes.CheckoutRequestID;
+    const isSandbox  = pushRes.sandbox === true;
+
+    if (statusEl) statusEl.textContent = isSandbox
+      ? `[Sandbox] M-Pesa prompt simulated. Ref: ${checkoutId.slice(-12)}`
+      : `Prompt sent to ${phone} — awaiting customer confirmation...`;
+
+    if (isSandbox) {
+      // In sandbox: no real callback comes, just simulate success after 2s
+      setTimeout(() => {
+        if (statusEl) statusEl.textContent = `[Sandbox] Payment confirmed! Ref: ${txRef}`;
+        showToast('[Sandbox] M-Pesa payment simulated ✓');
+        if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Send STK Push'; }
+        processPayment();
+      }, 2000);
+      return;
+    }
+
+    // 2. Poll for real confirmation (max 60s, every 3s)
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    const pollTimer = setInterval(async () => {
+      attempts++;
+      try {
+        const statusRes = await apiGet(`/api/mpesa/status/${checkoutId}`);
+
+        if (statusRes.status === 'completed') {
+          clearInterval(pollTimer);
+          if (statusEl) statusEl.textContent = `Payment confirmed! M-Pesa Ref: ${statusRes.mpesa_receipt_no}`;
+          showToast(`M-Pesa payment confirmed — ${statusRes.mpesa_receipt_no}`);
+          if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Send STK Push'; }
+          state._mpesaReceiptNo = statusRes.mpesa_receipt_no;
+          processPayment();
+
+        } else if (statusRes.status === 'failed') {
+          clearInterval(pollTimer);
+          if (statusEl) statusEl.textContent = `Payment failed: ${statusRes.result_desc || 'Customer cancelled or timed out'}`;
+          showToast('M-Pesa payment failed or was cancelled', 'error');
+          if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Send STK Push'; }
+
+        } else if (attempts >= maxAttempts) {
+          clearInterval(pollTimer);
+          if (statusEl) statusEl.textContent = 'Payment confirmation timed out. Check M-Pesa on customer phone.';
+          showToast('M-Pesa confirmation timed out', 'error');
+          if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Send STK Push'; }
+        } else {
+          // Still pending
+          const dots = '.'.repeat((attempts % 3) + 1);
+          if (statusEl) statusEl.textContent = `Waiting for customer confirmation${dots} (${attempts * 3}s)`;
+        }
+      } catch {
+        // Network hiccup — keep polling
+      }
+    }, 3000);
+
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+    showToast('STK Push error: ' + err.message, 'error');
+    if (stkBtn) { stkBtn.disabled = false; stkBtn.textContent = 'Send STK Push'; }
   }
 }
 

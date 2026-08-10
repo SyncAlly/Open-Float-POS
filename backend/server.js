@@ -66,6 +66,7 @@ app.use('/api/suppliers',       require('./routes/suppliers'));
 app.use('/api/receivables',     require('./routes/receivables'));
 app.use('/api/upload',          require('./routes/upload'));
 app.use('/api/ai',              require('./routes/ai'));
+app.use('/api/mpesa',           require('./routes/mpesa'));
 
 // ─── Global Error Handler (Fix 7: hide internals in production) ────────────────
 // eslint-disable-next-line no-unused-vars
