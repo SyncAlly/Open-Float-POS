@@ -3184,7 +3184,7 @@ function initRevenueChart(chartType) {
       datasets: [
         {
           label: 'Revenue (KES)',
-          data: [5800000, 6200000, 7100000, 6800000, 7800000, 8400000],
+          data: [0, 0, 0, 0, 0, 0],
           borderColor: '#4F46E5',
           backgroundColor: revBg,
           fill: !isBar,
@@ -3194,7 +3194,7 @@ function initRevenueChart(chartType) {
         },
         {
           label: 'Profit (KES)',
-          data: [1200000, 1450000, 1820000, 1680000, 1950000, 2100000],
+          data: [0, 0, 0, 0, 0, 0],
           borderColor: '#10B981',
           backgroundColor: profBg,
           fill: !isBar,
@@ -3226,7 +3226,7 @@ function initPaymentChart() {
     type: 'doughnut',
     data: {
       labels: ['Cash','M-Pesa','Card','Credit'],
-      datasets: [{ data: [38, 44, 12, 6], backgroundColor: ['#4F46E5','#10B981','#F59E0B','#EC4899'], borderWidth: 0 }]
+      datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#4F46E5','#10B981','#F59E0B','#EC4899'], borderWidth: 0 }]
     },
     options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
   });
@@ -3241,8 +3241,8 @@ function initAccountingCharts() {
       data: {
         labels: ['Feb','Mar','Apr','May','Jun','Jul'],
         datasets: [
-          { label: 'Inflows', data: [5800,6200,7100,6800,7800,8400], backgroundColor: 'rgba(79,70,229,0.85)', borderRadius: 4 },
-          { label: 'Outflows', data: [4600,4800,5400,5200,5900,6300], backgroundColor: 'rgba(239,68,68,0.75)', borderRadius: 4 }
+          { label: 'Inflows', data: [0, 0, 0, 0, 0, 0], backgroundColor: 'rgba(79,70,229,0.85)', borderRadius: 4 },
+          { label: 'Outflows', data: [0, 0, 0, 0, 0, 0], backgroundColor: 'rgba(239,68,68,0.75)', borderRadius: 4 }
         ]
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: d.textColor } } }, scales: { x: { grid: { color: d.gridColor }, ticks: { color: d.textColor } }, y: { grid: { color: d.gridColor }, ticks: { color: d.textColor } } } }
@@ -3252,7 +3252,7 @@ function initAccountingCharts() {
   if (c2 && !state.chartInstances.expense) {
     state.chartInstances.expense = new Chart(c2, {
       type: 'doughnut',
-      data: { labels: ['COGS','Salaries','Rent','Other'], datasets: [{ data: [52,22,11,15], backgroundColor: ['#4F46E5','#10B981','#F59E0B','#EC4899'], borderWidth: 0 }] },
+      data: { labels: ['COGS','Salaries','Rent','Other'], datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#4F46E5','#10B981','#F59E0B','#EC4899'], borderWidth: 0 }] },
       options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
     });
   }
@@ -3419,10 +3419,10 @@ function initHRCharts() {
     state.chartInstances.attend = new Chart(c1, {
       type: 'line',
       data: {
-        labels: Array.from({length:14}, (_,i) => `Jul ${i+1}`),
+        labels: Array.from({length:14}, (_,i) => `Day ${i+1}`),
         datasets: [
-          { label: 'Present', data: [38,40,35,41,39,40,38,41,37,40,39,38,40,41], borderColor: '#10B981', fill: false, tension: 0.3 },
-          { label: 'Absent', data: [3,1,6,0,2,1,3,0,4,1,2,3,1,0], borderColor: '#EF4444', fill: false, tension: 0.3 }
+          { label: 'Present', data: [0,0,0,0,0,0,0,0,0,0,0,0,0,0], borderColor: '#10B981', fill: false, tension: 0.3 },
+          { label: 'Absent', data: [0,0,0,0,0,0,0,0,0,0,0,0,0,0], borderColor: '#EF4444', fill: false, tension: 0.3 }
         ]
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: d.textColor } } }, scales: { x: { grid: { color: d.gridColor }, ticks: { color: d.textColor } }, y: { grid: { color: d.gridColor }, ticks: { color: d.textColor } } } }
@@ -3432,7 +3432,7 @@ function initHRCharts() {
   if (c2 && !state.chartInstances.payroll) {
     state.chartInstances.payroll = new Chart(c2, {
       type: 'doughnut',
-      data: { labels: ['Basic','Allowances','Deductions'], datasets: [{ data: [65,20,15], backgroundColor: ['#4F46E5','#10B981','#F59E0B'], borderWidth: 0 }] },
+      data: { labels: ['Basic','Allowances','Deductions'], datasets: [{ data: [0,0,0], backgroundColor: ['#4F46E5','#10B981','#F59E0B'], borderWidth: 0 }] },
       options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
     });
   }
@@ -3684,7 +3684,7 @@ function initProcureCharts() {
       type: 'bar',
       data: {
         labels: ['Feb','Mar','Apr','May','Jun','Jul'],
-        datasets: [{ label: 'Purchases (KES 000s)', data: [1400,1800,2100,1950,2300,2100], backgroundColor: 'rgba(79,70,229,0.85)', borderRadius: 4 }]
+        datasets: [{ label: 'Purchases (KES 000s)', data: [0,0,0,0,0,0], backgroundColor: 'rgba(79,70,229,0.85)', borderRadius: 4 }]
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: d.textColor } } }, scales: { x: { grid: { color: d.gridColor }, ticks: { color: d.textColor } }, y: { grid: { color: d.gridColor }, ticks: { color: d.textColor } } } }
     });
@@ -4466,7 +4466,7 @@ function updateDeliveryKPIs(items) {
   const done     = items.filter(d => d.status === 'delivered' && new Date(d.updated_at || d.created_at).toDateString() === today).length;
   const pending  = items.filter(d => d.status === 'pending').length;
   const delayed  = items.filter(d => d.status === 'delayed').length;
-  setEl('del-kpi-active', active || _NAIROBI_VEHICLES.filter(v => v.status === 'in_transit').length);
+  setEl('del-kpi-active', active);
   setEl('del-kpi-done',    done);
   setEl('del-kpi-pending', pending);
   setEl('del-kpi-delayed', delayed);
@@ -4477,18 +4477,7 @@ function renderActiveDeliveries(items) {
   if (!box) return;
   const active = items.filter(d => ['in_transit','delayed','pending'].includes(d.status));
   if (!active.length) {
-    // Show demo vehicles if DB is empty
-    box.innerHTML = _NAIROBI_VEHICLES.map(v => {
-      const cls = v.status === 'in_transit' ? 'on-time' : v.status === 'delayed' ? 'delayed' : 'pending';
-      const badge = v.status === 'in_transit' ? '<span class="badge badge-green">In Transit</span>'
-                  : v.status === 'delayed'    ? '<span class="badge badge-red">Delayed</span>'
-                  : '<span class="badge badge-amber">Pending</span>';
-      return `<div class="delivery-card">
-        <div class="delivery-status ${cls}"></div>
-        <div class="delivery-info"><p>${v.label}</p><span>Live GPS tracking active</span></div>
-        ${badge}
-      </div>`;
-    }).join('');
+    box.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:12px;text-align:center">No active deliveries recorded.</div>';
     return;
   }
   box.innerHTML = active.slice(0, 8).map(d => {
