@@ -3552,18 +3552,6 @@ function searchEmployees(q) {
   renderEmployeeRows(filtered);
 }
 
-async function populateEmpBranchDropdown(selectedId = null) {
-  const el = document.getElementById('emp-branch');
-  if (!el) return;
-  try {
-    const res = await apiGet('/api/branches');
-    const branches = res.data || [];
-    el.innerHTML = branches.map(b => `<option value="${b.id}" ${b.id == selectedId ? 'selected' : ''}>${b.name}</option>`).join('');
-  } catch(e) {
-    el.innerHTML = '<option value="1">Nairobi Main</option>';
-  }
-}
-
 function openEmployeeModal(id = null) {
   const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val || ''; };
   const titleEl = document.getElementById('emp-modal-title');
@@ -4200,8 +4188,8 @@ function clearAIChat() {
   showToast('Chat cleared');
 }
 
-/* BRANCH & MODAL HANDLERS */
-function openBranchModal() {
+/* BRANCH SWITCHER (topbar) */
+function _openBranchSwitcher() {
   document.getElementById('branch-modal')?.classList.remove('hidden');
 }
 
