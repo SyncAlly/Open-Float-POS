@@ -4631,6 +4631,63 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ─── Global HID Barcode Scanner Listener ────────────────────────────────
+  let _barcodeBuffer = '';
+  let _lastScanTime = 0;
+
+  document.addEventListener('keydown', e => {
+    const now = Date.now();
+    const activeEl = document.activeElement;
+    const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+    const isPosSearch = activeEl && activeEl.id === 'pos-search';
+
+    // Reset buffer if keypress delay > 70ms (human typing speed)
+    if (now - _lastScanTime > 70) {
+      _barcodeBuffer = '';
+    }
+    _lastScanTime = now;
+
+    if (e.key === 'Enter') {
+      if (_barcodeBuffer.length >= 2) {
+        const code = _barcodeBuffer.trim().toLowerCase();
+        const product = (state.productsCache || []).find(p => (p.sku || '').toLowerCase() === code);
+
+        if (product) {
+          addToCart(product.id);
+          showToast(`Scanned: ${product.name} (${product.sku}) ✓`);
+
+          // Play scanner beep audio feedback
+          try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              const ctx = new AudioCtx();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(1400, ctx.currentTime);
+              gain.gain.setValueAtTime(0.12, ctx.currentTime);
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.start();
+              osc.stop(ctx.currentTime + 0.08);
+            }
+          } catch (_) {}
+
+          if (isPosSearch) {
+            document.getElementById('pos-search').value = '';
+            filterProducts();
+          }
+          _barcodeBuffer = '';
+          e.preventDefault();
+          return;
+        }
+      }
+      _barcodeBuffer = '';
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      _barcodeBuffer += e.key;
+    }
+  });
+
   updateTime();
 
   // Restore existing session (auto-login if token saved in localStorage)
