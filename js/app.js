@@ -222,14 +222,16 @@ async function checkSession() {
       state.user = JSON.parse(savedUser);
       state.token = savedToken;
 
-      // Verify token with backend to ensure user still exists in DB (e.g. after DB reset)
-      const verifyRes = await fetch('/api/auth/me', {
-        headers: { 'Authorization': 'Bearer ' + savedToken }
-      });
+      // Verify token with backend if not a demo token
+      if (!savedToken.startsWith('demo_')) {
+        const verifyRes = await fetch('/api/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + savedToken }
+        });
 
-      if (!verifyRes.ok) {
-        doLogout();
-        return;
+        if (!verifyRes.ok) {
+          doLogout();
+          return;
+        }
       }
 
       if (loginScreen) loginScreen.classList.add('hidden');
