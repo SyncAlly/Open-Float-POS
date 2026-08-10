@@ -4622,16 +4622,48 @@ function initLogisticsMap() {
     maxZoom: 18
   }).addTo(_logisticsMap);
 
-  // Plot vehicle markers
-  _NAIROBI_VEHICLES.forEach(v => {
-    const icon = L.divIcon({
+  // 1. Plot Main Warehouse / HQ Marker
+  const hqIcon = L.divIcon({
+    className: '',
+    html: `<div style="
+      width:36px;height:36px;border-radius:50%;
+      background:#4F46E5;border:3px solid white;
+      box-shadow:0 2px 8px rgba(0,0,0,0.35);
+      display:flex;align-items:center;justify-content:center;
+    ">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+        <path d="M2 13V6l6-4 6 4v7H2z" stroke="white" stroke-width="1.5"/>
+        <path d="M6 13V9h4v4" stroke="white" stroke-width="1.5"/>
+      </svg>
+    </div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+    popupAnchor: [0, -20]
+  });
+
+  L.marker([-1.2921, 36.8219], { icon: hqIcon })
+    .bindPopup('<strong>Main Warehouse / HQ</strong><br>Central Dispatch Facility')
+    .addTo(_logisticsMap);
+
+  // 2. Plot real active deliveries from _delCache
+  const activeDeliveries = (_delCache || []).filter(d => ['in_transit', 'delayed', 'pending'].includes(d.status));
+
+  activeDeliveries.forEach((d, idx) => {
+    // Generate map coordinates relative to HQ if exact lat/lng is missing
+    const lat = d.lat || (-1.2921 + (((d.id || idx + 1) * 19) % 40 - 20) * 0.0035);
+    const lng = d.lng || (36.8219 + (((d.id || idx + 1) * 29) % 40 - 20) * 0.0035);
+
+    const statusColor = d.status === 'in_transit' ? '#10B981' : d.status === 'delayed' ? '#EF4444' : '#F59E0B';
+    const statusLabel = d.status === 'in_transit' ? 'In Transit' : d.status === 'delayed' ? 'Delayed' : 'Pending';
+
+    const vanIcon = L.divIcon({
       className: '',
       html: `<div style="
-        width:36px;height:36px;border-radius:50%;
-        background:${v.color};border:3px solid white;
+        width:34px;height:34px;border-radius:50%;
+        background:${statusColor};border:3px solid white;
         box-shadow:0 2px 8px rgba(0,0,0,0.35);
         display:flex;align-items:center;justify-content:center;
-        ${v.status === 'in_transit' ? 'animation:pulse-marker 2s infinite;' : ''}
+        ${d.status === 'in_transit' ? 'animation:pulse-marker 2s infinite;' : ''}
       ">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M2 11h9V6H2v5z" stroke="white" stroke-width="1.4"/>
@@ -4640,15 +4672,21 @@ function initLogisticsMap() {
           <circle cx="12" cy="13" r="1.2" fill="white"/>
         </svg>
       </div>`,
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
-      popupAnchor: [0, -20]
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      popupAnchor: [0, -18]
     });
 
-    const marker = L.marker([v.lat, v.lng], { icon })
-      .bindPopup(`<strong>${v.label}</strong><br>Status: <b>${v.status.replace('_',' ')}</b>`)
+    const marker = L.marker([lat, lng], { icon: vanIcon })
+      .bindPopup(`
+        <strong>${d.ref || 'Delivery #' + d.id}</strong><br>
+        <b>Driver:</b> ${d.driver_name || 'Unassigned'} (${d.van_number || 'Vehicle'})<br>
+        <b>Destination:</b> ${d.destination || 'N/A'}<br>
+        <b>Status:</b> <span style="color:${statusColor};font-weight:600;">${statusLabel}</span>
+      `)
       .addTo(_logisticsMap);
-    _mapMarkers.push({ marker, base: { lat: v.lat, lng: v.lng }, status: v.status });
+
+    _mapMarkers.push({ marker, id: d.id, status: d.status });
   });
 
   // Ensure Leaflet recalculates tile container dimensions after tab transition
