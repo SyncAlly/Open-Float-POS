@@ -123,12 +123,6 @@ function completeLogin() {
   loadCustomers();
   if (state.user?.role === 'owner' || state.user?.role === 'manager') {
     loadDashboardKPIs();
-    setTimeout(() => {
-      drawSparkline('spark-revenue', [62,68,74,71,80,78,84], '#4F46E5');
-      drawSparkline('spark-profit', [22,28,32,30,35,34,36], '#10B981');
-      drawSparkline('spark-txn', [140,160,175,158,182,178,190], '#8B5CF6');
-      drawSparkline('spark-debt', [95,102,98,110,108,115,120], '#EF4444');
-    }, 300);
   }
 }
 
@@ -662,10 +656,20 @@ async function loadDashboardKPIs() {
       }
     }
 
-    // 6. Branch Performance List
+    // 6. Branch Performance List (real data only)
     const branchListEl = document.getElementById('dash-branch-list');
     if (branchListEl) {
-      if (txs.length === 0) {
+      // Group transactions by branch
+      const branchMap = {};
+      txs.forEach(t => {
+        const bname = t.branch_name || 'Main Branch / HQ';
+        branchMap[bname] = (branchMap[bname] || 0) + (t.total || 0);
+      });
+      const branchEntries = Object.entries(branchMap).sort((a, b) => b[1] - a[1]);
+      const rankClasses = ['gold', 'silver', 'bronze', ''];
+      const maxRev = branchEntries.length > 0 ? branchEntries[0][1] : 1;
+
+      if (branchEntries.length === 0) {
         branchListEl.innerHTML = `
           <div class="branch-row">
             <div class="branch-rank gold">1</div>
@@ -677,22 +681,17 @@ async function loadDashboardKPIs() {
           </div>
         `;
       } else {
-        const branches = [
-          { name: 'Nairobi Main', rev: 1200000, pct: 92, rank: '1', class: 'gold' },
-          { name: 'Westlands', rev: 847000, pct: 74, rank: '2', class: 'silver' },
-          { name: 'Mombasa CBD', rev: 621000, pct: 58, rank: '3', class: 'bronze' },
-          { name: 'Kisumu Branch', rev: 392000, pct: 39, rank: '4', class: '' }
-        ];
-        branchListEl.innerHTML = branches.map(b => `
-          <div class="branch-row">
-            <div class="branch-rank ${b.class}">${b.rank}</div>
+        branchListEl.innerHTML = branchEntries.map(([name, rev], i) => {
+          const pct = Math.round((rev / maxRev) * 100);
+          return `<div class="branch-row">
+            <div class="branch-rank ${rankClasses[i] || ''}">${i + 1}</div>
             <div class="branch-details">
-              <span>${b.name}</span>
-              <div class="branch-bar-wrap"><div class="branch-bar" style="width:${b.pct}%"></div></div>
+              <span>${name}</span>
+              <div class="branch-bar-wrap"><div class="branch-bar" style="width:${pct}%"></div></div>
             </div>
-            <div class="branch-rev">KES ${fmt(b.rev)}</div>
-          </div>
-        `).join('');
+            <div class="branch-rev">KES ${fmt(Math.round(rev))}</div>
+          </div>`;
+        }).join('');
       }
     }
 
@@ -723,27 +722,26 @@ async function loadDashboardKPIs() {
       }
     }
 
-    // 8. Pending Approvals Grid
+    // 8. Pending Approvals Grid (real data only)
     const appGridEl = document.getElementById('dash-approvals-grid');
     if (appGridEl) {
       const pendingItems = prs.filter(p => p.status === 'pending');
-      const itemsToShow = pendingItems.length > 0 ? pendingItems.map(p => ({
-        title: `Purchase Request #${p.ref || ('PR-' + p.id)}`,
-        cat: `Procurement · KES ${fmt(Math.round(p.total_value || 0))}`,
-        icon: 'purple'
-      })) : [
-        { title: 'Purchase Request #PR-0841', cat: 'Procurement · KES 142,000', icon: 'purple' },
-        { title: 'Leave Request – Grace Odhiambo', cat: 'HR · 5 days annual leave', icon: 'amber' },
-        { title: 'Expense Claim – Westlands Branch', cat: 'Accounting · KES 28,400', icon: 'blue' }
-      ];
-
-      appGridEl.innerHTML = itemsToShow.map(item => `
-        <div class="approval-item">
-          <div class="approval-icon ${item.icon || 'purple'}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg></div>
-          <div class="approval-info"><p>${item.title}</p><span>${item.cat}</span></div>
-          <div class="approval-actions"><button class="btn-approve" onclick="approveItem(this)">Approve</button><button class="btn-reject" onclick="approveItem(this)">Reject</button></div>
-        </div>
-      `).join('');
+      if (pendingItems.length === 0) {
+        appGridEl.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:12px;text-align:center">No pending approvals.</div>';
+      } else {
+        const itemsToShow = pendingItems.map(p => ({
+          title: `Purchase Request #${p.ref || ('PR-' + p.id)}`,
+          cat: `Procurement · KES ${fmt(Math.round(p.total_value || 0))}`,
+          icon: 'purple'
+        }));
+        appGridEl.innerHTML = itemsToShow.map(item => `
+          <div class="approval-item">
+            <div class="approval-icon ${item.icon || 'purple'}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="approval-info"><p>${item.title}</p><span>${item.cat}</span></div>
+            <div class="approval-actions"><button class="btn-approve" onclick="approveItem(this)">Approve</button><button class="btn-reject" onclick="approveItem(this)">Reject</button></div>
+          </div>
+        `).join('');
+      }
     }
 
     applyDashboardCustomization();
