@@ -213,11 +213,20 @@ async function handleCallback(req, res) {
   // Always acknowledge Safaricom immediately
   res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
 
+  console.log('[M-Pesa Callback] Received at', new Date().toISOString());
+  console.log('[M-Pesa Callback] Raw body:', JSON.stringify(req.body, null, 2));
+
   try {
     const body = req.body?.Body?.stkCallback;
-    if (!body) return;
+    if (!body) {
+      console.log('[M-Pesa Callback] WARNING: No stkCallback in body. Full body:', JSON.stringify(req.body));
+      return;
+    }
 
     const { CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = body;
+    console.log(`[M-Pesa Callback] CheckoutRequestID: ${CheckoutRequestID}`);
+    console.log(`[M-Pesa Callback] ResultCode: ${ResultCode} | ResultDesc: ${ResultDesc}`);
+
     const db = await getDb();
 
     if (ResultCode === 0) {
