@@ -1003,19 +1003,8 @@
             <div class="panel-header"><h3>Business &amp; Store Profile</h3></div>
             <div style="display:flex;flex-direction:column;gap:12px;">
               <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Business Name</label><input id="set-business-name" type="text" class="form-field-input" placeholder="OpenFloat Enterprise Ltd" /></div>
-              <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">KRA PIN Number</label><input id="set-kra-pin" type="text" class="form-field-input" placeholder="P051293841Z" /></div>
               <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Support Email</label><input id="set-support-email" type="email" class="form-field-input" placeholder="support@openfloat.com" /></div>
               <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">HQ Phone Number</label><input id="set-hq-phone" type="text" class="form-field-input" placeholder="+254 700 000 000" /></div>
-            </div>
-          </div>
-
-          <div class="panel-card" style="flex:1;">
-            <div class="panel-header"><h3>M-Pesa &amp; Payment Gateway</h3></div>
-            <div style="display:flex;flex-direction:column;gap:12px;">
-              <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Paybill / Till Number</label><input id="set-mpesa-paybill" type="text" class="form-field-input" placeholder="400200" /></div>
-              <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Daraja Consumer Key</label><input id="set-daraja-key" type="password" class="form-field-input" placeholder="Enter Daraja consumer key" /></div>
-              <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Daraja Consumer Secret</label><input id="set-daraja-secret" type="password" class="form-field-input" placeholder="Enter Daraja consumer secret" /></div>
-              <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Passkey (STK Push)</label><input id="set-mpesa-passkey" type="password" class="form-field-input" placeholder="Enter M-Pesa passkey" /></div>
             </div>
           </div>
         </div>
@@ -1524,7 +1513,7 @@
         <strong>OPENFLOAT POS X</strong>
       </div>
       <p class="receipt-store-sub">Nairobi Main Branch · Kimathi Street</p>
-      <p class="receipt-store-sub">Tel: +254 700 000 000 · KRA PIN: P051293841Z</p>
+      <p class="receipt-store-sub">Tel: +254 700 000 000</p>
       <div class="receipt-divider"></div>
       <p class="receipt-meta" id="receipt-date">Date: Jul 22, 2026  10:30 AM</p>
       <p class="receipt-meta" id="receipt-num">Receipt: TXN-20260722-0041</p>
@@ -1933,7 +1922,6 @@
       </div>
       <div class="cat-tabs" style="margin-bottom:14px;">
         <button class="cat-tab active" onclick="switchSettingsTab('profile', this)">Profile</button>
-        <button class="cat-tab" onclick="switchSettingsTab('mpesa', this)">M-Pesa &amp; Payments</button>
         <button class="cat-tab" onclick="switchSettingsTab('tax', this)">Tax &amp; VAT</button>
         <button class="cat-tab" onclick="switchSettingsTab('hardware', this)">Hardware &amp; Printers</button>
       </div>
@@ -1942,17 +1930,7 @@
       <div class="settings-tab-content active" id="stab-profile">
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Business Name</label><input type="text" class="form-field-input" value="OpenFloat Enterprise Ltd" style="width:100%;margin-top:4px;" /></div>
-          <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">KRA PIN Number</label><input type="text" class="form-field-input" value="P051293841Z" style="width:100%;margin-top:4px;" /></div>
           <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Support Email</label><input type="email" class="form-field-input" value="support@openfloat.com" style="width:100%;margin-top:4px;" /></div>
-        </div>
-      </div>
-
-      <!-- M-Pesa Tab -->
-      <div class="settings-tab-content hidden" id="stab-mpesa">
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">M-Pesa Paybill / Till Number</label><input type="text" class="form-field-input" value="400200" style="width:100%;margin-top:4px;" /></div>
-          <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Consumer Key (Daraja API)</label><input type="password" class="form-field-input" value="••••••••••••••••" style="width:100%;margin-top:4px;" /></div>
-          <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Consumer Secret</label><input type="password" class="form-field-input" value="••••••••••••••••" style="width:100%;margin-top:4px;" /></div>
         </div>
       </div>
 

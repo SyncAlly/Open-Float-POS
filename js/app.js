@@ -1771,7 +1771,7 @@ function renderZReportPreview(rep) {
   preview.innerHTML = `
     <div class="zr-header" style="text-align:center;">
       <div style="font-size:15px;font-weight:700;">OPENFLOAT ENTERPRISE LTD</div>
-      <div style="font-size:11px;">${rep.branch_name || 'Nairobi Main Branch'} &mdash; KRA PIN: P051293841Z</div>
+      <div style="font-size:11px;">${rep.branch_name || 'Nairobi Main Branch'}</div>
       <div style="font-size:11px;margin-top:4px;font-weight:600;">Z-REPORT &mdash; SESSION CLOSURE REPORT (#${rep.report_no || 'ZREP-001'})</div>
       <div style="font-size:11px;color:var(--text-muted);">${dateStr}</div>
     </div>
@@ -2315,7 +2315,8 @@ async function viewTxnDetail(txId) {
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Receipt Ref:</span><strong>${ref}</strong></div>
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Customer:</span><span>${txn.customer_name || 'Walk-in Customer'}</span></div>
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Cashier:</span><span>${txn.cashier_name || 'Staff Cashier'}</span></div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:10px;"><span>Payment Method:</span><span style="text-transform:uppercase;font-weight:600;">${txn.payment_method || 'CASH'}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Payment Method:</span><span style="text-transform:uppercase;font-weight:600;">${txn.payment_method || 'CASH'}</span></div>
+      ${(txn.payment_method || '').toLowerCase() === 'mpesa' || txn.mpesa_receipt_no ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;color:var(--green);font-weight:700;"><span>M-Pesa Code:</span><span>${txn.mpesa_receipt_no || state._mpesaReceiptNo || 'QFH9128391'}</span></div>` : ''}
 
       <div style="border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);padding:8px 0;margin-bottom:10px;">
         <div style="display:grid;grid-template-columns:2fr 1fr 1fr;font-weight:700;margin-bottom:6px;">
@@ -2371,6 +2372,7 @@ function printCurrentTxnReceipt() {
     <div class="row"><span>Customer:</span><span>${txn.customer_name || 'Walk-in'}</span></div>
     <div class="row"><span>Cashier:</span><span>${txn.cashier_name || 'Staff'}</span></div>
     <div class="row"><span>Method:</span><span class="bold">${(txn.payment_method || 'cash').toUpperCase()}</span></div>
+    ${(txn.payment_method || '').toLowerCase() === 'mpesa' || txn.mpesa_receipt_no ? `<div class="row bold" style="color:#059669;"><span>M-Pesa Code:</span><span>${txn.mpesa_receipt_no || state._mpesaReceiptNo || 'QFH9128391'}</span></div>` : ''}
     <hr>
     ${items.map(it => `
       <div class="row">
@@ -2794,6 +2796,12 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
       changeHtml = `<div class="receipt-row" style="color:var(--accent-emerald);font-weight:600;"><span>Change Given:</span><span>KES ${fmt(d.changeAmt)}</span></div>`;
     }
 
+    let mpesaHtml = '';
+    if ((d.payMethod || '').toLowerCase() === 'mpesa' || state._mpesaReceiptNo) {
+      const mCode = d.mpesaCode || state._mpesaReceiptNo || 'QFH9128391';
+      mpesaHtml = `<div class="receipt-row" style="color:#059669;font-weight:700;margin-top:2px;"><span>M-Pesa Code:</span><span>${mCode}</span></div>`;
+    }
+
     summaryContainer.innerHTML = `
       <div class="receipt-row"><span>Subtotal:</span><span>KES ${fmt(d.subtotal)}</span></div>
       <div class="receipt-row"><span>VAT (16%):</span><span>KES ${fmt(d.vat)}</span></div>
@@ -2801,6 +2809,7 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
       ${changeHtml}
       <div class="receipt-row" style="margin-top:4px;color:#6B7280;"><span>Customer:</span><span>${d.customerName}</span></div>
       <div class="receipt-row" style="color:#6B7280;"><span>Payment Method:</span><span style="text-transform:uppercase;">${d.payMethod}</span></div>
+      ${mpesaHtml}
     `;
   }
 
@@ -4167,13 +4176,8 @@ function switchSettingsTab(tabName, btn) {
 /** Map of setting key → element ID */
 const SETTINGS_MAP = {
   business_name:   'set-business-name',
-  kra_pin:         'set-kra-pin',
   support_email:   'set-support-email',
   hq_phone:        'set-hq-phone',
-  paybill:         'set-mpesa-paybill',   // matches seed key
-  daraja_key:      'set-daraja-key',
-  daraja_secret:   'set-daraja-secret',
-  mpesa_passkey:   'set-mpesa-passkey',
   currency:        'set-currency',
   vat_rate:        'set-vat-rate',
   receipt_header:  'set-receipt-header',
