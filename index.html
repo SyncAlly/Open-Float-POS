@@ -198,7 +198,7 @@
       </div><!-- end .sidebar-scroll-area -->
 
       <div class="sidebar-footer">
-        <div class="branch-selector" onclick="_openBranchSwitcher()">
+        <div class="branch-selector" onclick="openBranchModal()">
           <div class="branch-dot"></div>
           <div class="branch-info">
             <span class="branch-name" id="branch-name">Nairobi Main Branch</span>
@@ -1045,29 +1045,7 @@
                   <option value="manual">Manual Key Lock Only</option>
                 </select>
               </div>
-        <div class="panel-card" style="margin-top:20px;">
-          <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
-            <div>
-              <h3>Store Branches &amp; Locations</h3>
-              <p style="font-size:12px;color:var(--text-muted);margin-top:2px;">Manage store branches, HQ, and physical locations for staff assignment</p>
             </div>
-            <button class="btn-sm" onclick="openBranchModal()">+ Add Branch</button>
-          </div>
-          <div class="data-table-wrap" style="margin-top:12px;">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Branch Name</th>
-                  <th>Location / Address</th>
-                  <th>Phone Number</th>
-                  <th>Assigned Staff</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="branches-tbody">
-                <!-- Rendered dynamically from /api/branches -->
-              </tbody>
-            </table>
           </div>
         </div>
       </div>
@@ -1567,15 +1545,18 @@
   </div>
 
   <!-- BRANCH SWITCHER MODAL -->
-  <div class="modal-overlay hidden" id="branch-switcher-modal" onclick="closeModal('branch-switcher-modal')">
+  <div class="modal-overlay hidden" id="branch-modal" onclick="closeModal('branch-modal')">
     <div class="modal-box" onclick="event.stopPropagation()">
-      <div class="modal-head"><h3>Select Operating Branch</h3><button class="modal-close" onclick="closeModal('branch-switcher-modal')">
+      <div class="modal-head"><h3>Select Operating Branch</h3><button class="modal-close" onclick="closeModal('branch-modal')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button></div>
-      <div id="branch-switcher-list" style="display:flex;flex-direction:column;gap:8px;max-height:350px;overflow-y:auto;">
-        <div style="text-align:center;padding:16px;color:var(--text-muted);">Loading branches…</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="branch-opt-card" onclick="selectBranch('Nairobi Main Branch')"><strong>Nairobi Main Branch</strong><span>HQ · Kimathi Street</span></div>
+        <div class="branch-opt-card" onclick="selectBranch('Westlands Branch')"><strong>Westlands Branch</strong><span>Sarit Centre Hub</span></div>
+        <div class="branch-opt-card" onclick="selectBranch('Mombasa CBD Branch')"><strong>Mombasa CBD Branch</strong><span>Nkrumah Road</span></div>
+        <div class="branch-opt-card" onclick="selectBranch('Kisumu Branch')"><strong>Kisumu Branch</strong><span>Oginga Odinga Way</span></div>
       </div>
-      <div class="modal-foot"><button class="btn-sm secondary" onclick="closeModal('branch-switcher-modal')">Cancel</button></div>
+      <div class="modal-foot"><button class="btn-sm secondary" onclick="closeModal('branch-modal')">Cancel</button></div>
     </div>
   </div>
 
@@ -2198,7 +2179,10 @@
           <div>
             <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Store / Branch</label>
             <select class="form-field-input" id="emp-branch" style="width:100%;margin-top:4px;">
-              <option value="">Loading branches...</option>
+              <option value="1">Nairobi Main Branch</option>
+              <option value="2">Westlands Branch</option>
+              <option value="3">Mombasa CBD Branch</option>
+              <option value="4">Kisumu Branch</option>
             </select>
           </div>
           <div>
@@ -2314,37 +2298,6 @@
     </div>
   </div>
 
-  <!-- STORE BRANCH MODAL -->
-  <div class="modal-overlay hidden" id="branch-modal" onclick="closeModal('branch-modal')">
-    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:440px">
-      <div class="modal-head">
-        <h3 id="branch-modal-title">Add Store Branch</h3>
-        <button class="modal-close" onclick="closeModal('branch-modal')">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </button>
-      </div>
-      <input type="hidden" id="branch-modal-id" />
-      <div style="display:flex;flex-direction:column;gap:12px;padding:4px 0 8px">
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Branch Name *</label>
-          <input type="text" id="branch-modal-name" class="form-field-input" placeholder="e.g. Westlands Branch, Kisumu Store" style="width:100%;" />
-        </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Location / Address</label>
-          <input type="text" id="branch-modal-location" class="form-field-input" placeholder="e.g. Sarit Centre, 2nd Floor" style="width:100%;" />
-        </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Phone Number</label>
-          <input type="text" id="branch-modal-phone" class="form-field-input" placeholder="+254 700 000 000" style="width:100%;" />
-        </div>
-      </div>
-      <div class="modal-foot" style="gap:8px;margin-top:14px;">
-        <button class="btn-sm secondary" onclick="closeModal('branch-modal')">Cancel</button>
-        <button class="btn-sm" onclick="submitBranchModal()">Save Branch</button>
-      </div>
-    </div>
-  </div>
-
   <!-- CHANGE PASSWORD MODAL -->
   <div class="modal-overlay hidden" id="change-password-modal" onclick="closeModal('change-password-modal')">
     <div class="modal-box" onclick="event.stopPropagation()" style="max-width:400px">
@@ -2379,6 +2332,6 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <script src="js/app.js?v=20260811_v3"></script>
+  <script src="js/app.js?v=20260805s"></script>
 </body>
 </html>

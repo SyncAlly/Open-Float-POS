@@ -62,7 +62,6 @@ app.use('/api/services',        require('./routes/services'));
 app.use('/api/stock-movements', require('./routes/stockMovements'));
 app.use('/api/hire-purchase',   require('./routes/hirePurchase'));
 app.use('/api/z-reports',       require('./routes/zReports'));
-app.use('/api/branches',        require('./routes/branches'));
 app.use('/api/suppliers',       require('./routes/suppliers'));
 app.use('/api/receivables',     require('./routes/receivables'));
 app.use('/api/upload',          require('./routes/upload'));
