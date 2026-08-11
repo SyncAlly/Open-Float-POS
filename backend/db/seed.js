@@ -40,10 +40,7 @@ async function seed() {
 
   // ── BRANCHES ──────────────────────────────────────────────────────────────────
   const branches = [
-    ['Nairobi Main Branch', 'Kimathi Street, CBD', '+254 700 100 001'],
-    ['Westlands Branch', 'Sarit Centre, Westlands', '+254 700 100 002'],
-    ['Mombasa CBD Branch', 'Nkrumah Road, Mombasa', '+254 700 100 003'],
-    ['Kisumu Branch', 'Oginga Odinga Way, Kisumu', '+254 700 100 004'],
+    ['Main Branch', 'Kimathi Street, CBD', '+254 700 100 001'],
   ];
   branches.forEach(([name, location, phone]) =>
     run('INSERT OR IGNORE INTO branches (name, location, phone) VALUES (?, ?, ?)', [name, location, phone])

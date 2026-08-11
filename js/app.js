@@ -10,7 +10,8 @@ const state = {
   theme: 'light',
   sidebarCollapsed: false,
   chartInstances: {},
-  heldOrders: []
+  heldOrders: [],
+  branchesCache: []
 };
 
 /* AUTHENTICATION HANDLERS */
@@ -392,6 +393,20 @@ async function apiPost(path, body) {
   const headers = { 'Content-Type': 'application/json' };
   if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
   const res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) });
+  return res.json();
+}
+
+async function apiPut(path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+  const res = await fetch(path, { method: 'PUT', headers, body: JSON.stringify(body) });
+  return res.json();
+}
+
+async function apiDelete(path) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+  const res = await fetch(path, { method: 'DELETE', headers });
   return res.json();
 }
 
@@ -3729,6 +3744,7 @@ function searchEmployees(q) {
 }
 
 function openEmployeeModal(id = null) {
+  populateEmpBranchDropdown(state.branchesCache || []);
   const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val || ''; };
   const titleEl = document.getElementById('emp-modal-title');
 
@@ -4388,8 +4404,147 @@ function clearAIChat() {
   showToast('Chat cleared');
 }
 
+/* ══════════════════════════════════════════
+   BRANCH MANAGEMENT
+══════════════════════════════════════════ */
+async function loadBranches() {
+  try {
+    const res = await apiGet('/api/branches');
+    state.branchesCache = res.data || [];
+
+    renderSettingsBranches(state.branchesCache);
+    populateEmpBranchDropdown(state.branchesCache);
+    renderBranchSwitcherModal(state.branchesCache);
+    populateZReportBranchSelects(state.branchesCache);
+  } catch (e) {
+    console.warn('[loadBranches] error:', e);
+  }
+}
+
+function renderSettingsBranches(branches) {
+  const tbody = document.getElementById('settings-branches-tbody');
+  if (!tbody) return;
+
+  if (!branches.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:var(--text-muted);">No store branches found. Click "+ Add Branch" to create one.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = branches.map(b => {
+    const isMain = b.id === 1 || b.name.toLowerCase() === 'main branch';
+    const deleteBtn = isMain
+      ? '<span style="font-size:11px;color:var(--text-muted);">Primary</span>'
+      : `<button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);" onclick="deleteBranch(${b.id})">Delete</button>`;
+    return `<tr>
+      <td><strong>${b.name}</strong></td>
+      <td>${b.location || '—'}</td>
+      <td>${b.phone || '—'}</td>
+      <td>${deleteBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+function populateEmpBranchDropdown(branches = []) {
+  const select = document.getElementById('emp-branch');
+  if (!select) return;
+  const currentVal = select.value;
+  const list = branches.length ? branches : [{ id: 1, name: 'Main Branch' }];
+  select.innerHTML = list.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+  if (currentVal && list.some(b => String(b.id) === String(currentVal))) {
+    select.value = currentVal;
+  }
+}
+
+function renderBranchSwitcherModal(branches = []) {
+  const container = document.getElementById('branch-modal-list');
+  if (!container) return;
+  const activeBranches = branches.length ? branches : [{ id: 1, name: 'Main Branch', location: 'Headquarters Store' }];
+
+  container.innerHTML = activeBranches.map(b => `
+    <div class="branch-opt-card" onclick="selectBranch('${(b.name || '').replace(/'/g, "\\'")}')">
+      <strong>${b.name}</strong>
+      <span>${b.location || 'Branch Store'}</span>
+    </div>
+  `).join('');
+}
+
+function populateZReportBranchSelects(branches = []) {
+  const list = branches.length ? branches : [{ id: 1, name: 'Main Branch' }];
+  const branchOptions = list.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+  const allBranchesOpt = `<option value="all">All Branches</option>`;
+  const allStoresOpt = `<option value="all">All Stores &amp; Warehouses</option>`;
+
+  // Cashier tab branch select
+  const cashierSel = document.getElementById('zr-cashier-branch');
+  if (cashierSel) cashierSel.innerHTML = branchOptions;
+
+  // Manager tab branch select (with All Branches first)
+  const managerSel = document.getElementById('zr-manager-branch');
+  if (managerSel) managerSel.innerHTML = allBranchesOpt + branchOptions;
+
+  // Store tab branch select (with All Branches first)
+  const storeSel = document.getElementById('zr-store-select');
+  if (storeSel) storeSel.innerHTML = allBranchesOpt + branchOptions;
+
+  // Upload modal store select
+  const uploadSel = document.getElementById('upload-store-select');
+  if (uploadSel) uploadSel.innerHTML = allStoresOpt + branchOptions;
+
+  // Stock movement modal store select
+  const movSel = document.getElementById('mov-store-select');
+  if (movSel) movSel.innerHTML = branchOptions;
+}
+
+function openAddBranchModal() {
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  setVal('new-branch-name', '');
+  setVal('new-branch-location', '');
+  setVal('new-branch-phone', '');
+  document.getElementById('add-branch-modal')?.classList.remove('hidden');
+}
+
+async function saveNewBranch() {
+  const name = document.getElementById('new-branch-name')?.value.trim();
+  const location = document.getElementById('new-branch-location')?.value.trim();
+  const phone = document.getElementById('new-branch-phone')?.value.trim();
+
+  if (!name) {
+    showToast('Please enter a branch name.');
+    return;
+  }
+
+  try {
+    const res = await apiPost('/api/branches', { name, location, phone });
+    if (res.success) {
+      showToast('Branch added successfully!');
+      closeModal('add-branch-modal');
+      await loadBranches();
+    } else {
+      showToast(res.error || 'Failed to add branch');
+    }
+  } catch (e) {
+    showToast(e.message || 'Error saving branch');
+  }
+}
+
+async function deleteBranch(id) {
+  if (!confirm('Are you sure you want to deactivate this branch?')) return;
+  try {
+    const res = await apiDelete('/api/branches/' + id);
+    if (res.success) {
+      showToast('Branch deactivated.');
+      await loadBranches();
+    } else {
+      showToast(res.error || 'Failed to delete branch');
+    }
+  } catch (e) {
+    showToast('Error deactivating branch');
+  }
+}
+
 /* BRANCH & MODAL HANDLERS */
 function openBranchModal() {
+  renderBranchSwitcherModal(state.branchesCache || []);
   document.getElementById('branch-modal')?.classList.remove('hidden');
 }
 
@@ -4514,6 +4669,7 @@ const SETTINGS_MAP = {
 };
 
 async function loadSettings() {
+  loadBranches();
   try {
     const data = await apiGet('/api/settings');
     const s = data.data || {};
@@ -5054,6 +5210,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Only load live data and charts if a session was restored
   if (state.user) {
     initCharts();
+    loadBranches();
     loadPOSProducts();
     loadInventory();
     loadCustomers();

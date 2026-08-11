@@ -50,6 +50,7 @@ app.get('/api/health', (req, res) => {
 
 // API Routes (Simplest -> Most Complex)
 app.use('/api/settings',        require('./routes/settings'));
+app.use('/api/branches',        require('./routes/branches'));
 app.use('/api/inventory',       require('./routes/inventory'));
 app.use('/api/auth',            require('./routes/auth'));
 app.use('/api/hr',              require('./routes/hr'));

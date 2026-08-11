@@ -201,7 +201,7 @@
         <div class="branch-selector" onclick="openBranchModal()">
           <div class="branch-dot"></div>
           <div class="branch-info">
-            <span class="branch-name" id="branch-name">Nairobi Main Branch</span>
+            <span class="branch-name" id="branch-name">Main Branch</span>
             <span class="branch-status">Online</span>
           </div>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 6l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -1007,6 +1007,23 @@
               <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">HQ Phone Number</label><input id="set-hq-phone" type="text" class="form-field-input" placeholder="+254 700 000 000" /></div>
             </div>
           </div>
+
+          <div class="panel-card" style="flex:1;">
+            <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
+              <h3>Store Branches</h3>
+              <button class="btn-sm" onclick="openAddBranchModal()">+ Add Branch</button>
+            </div>
+            <div class="data-table-wrap" style="max-height:220px;overflow-y:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr><th>Branch Name</th><th>Location</th><th>Phone</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="settings-branches-tbody">
+                  <tr><td colspan="4" style="text-align:center;padding:14px;color:var(--text-muted);">Loading branches...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <div style="display:flex;gap:20px;margin-top:20px;">
@@ -1239,10 +1256,7 @@
               <div>
                 <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Branch</label>
                 <select class="form-field-input" id="zr-cashier-branch" style="width:100%;margin-top:4px;">
-                  <option value="Nairobi Main">Nairobi Main Branch</option>
-                  <option value="Westlands">Westlands Branch</option>
-                  <option value="Mombasa CBD">Mombasa CBD Branch</option>
-                  <option value="Kisumu">Kisumu Branch</option>
+                  <option value="1">Main Branch</option>
                 </select>
               </div>
             </div>
@@ -1268,8 +1282,8 @@
               <div>
                 <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Branch</label>
                 <select class="form-field-input" id="zr-manager-branch" style="width:100%;margin-top:4px;">
-                  <option value="Nairobi Main">Nairobi Main Branch</option>
-                  <option value="All Branches">All Branches</option>
+                  <option value="all">All Branches</option>
+                  <option value="1">Main Branch</option>
                 </select>
               </div>
             </div>
@@ -1281,10 +1295,8 @@
               <div>
                 <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Store / Warehouse</label>
                 <select class="form-field-input" id="zr-store-select" style="width:100%;margin-top:4px;">
-                  <option value="Nairobi Main">Nairobi Main Branch</option>
-                  <option value="Westlands">Westlands Branch</option>
-                  <option value="Mombasa CBD">Mombasa CBD Branch</option>
-                  <option value="Kisumu">Kisumu Branch</option>
+                  <option value="all">All Branches</option>
+                  <option value="1">Main Branch</option>
                 </select>
               </div>
               <div>
@@ -1550,11 +1562,8 @@
       <div class="modal-head"><h3>Select Operating Branch</h3><button class="modal-close" onclick="closeModal('branch-modal')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button></div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <div class="branch-opt-card" onclick="selectBranch('Nairobi Main Branch')"><strong>Nairobi Main Branch</strong><span>HQ · Kimathi Street</span></div>
-        <div class="branch-opt-card" onclick="selectBranch('Westlands Branch')"><strong>Westlands Branch</strong><span>Sarit Centre Hub</span></div>
-        <div class="branch-opt-card" onclick="selectBranch('Mombasa CBD Branch')"><strong>Mombasa CBD Branch</strong><span>Nkrumah Road</span></div>
-        <div class="branch-opt-card" onclick="selectBranch('Kisumu Branch')"><strong>Kisumu Branch</strong><span>Oginga Odinga Way</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;" id="branch-modal-list">
+        <div class="branch-opt-card" onclick="selectBranch('Main Branch')"><strong>Main Branch</strong><span>Headquarters Store</span></div>
       </div>
       <div class="modal-foot"><button class="btn-sm secondary" onclick="closeModal('branch-modal')">Cancel</button></div>
     </div>
@@ -1597,11 +1606,8 @@
           <div>
             <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Target Store / Warehouse</label>
             <select class="form-field-input" id="upload-store-select" style="width:100%;margin-top:4px;">
-              <option>All Stores &amp; Warehouses</option>
-              <option>Nairobi Main Branch</option>
-              <option>Westlands Branch</option>
-              <option>Mombasa CBD Branch</option>
-              <option>Kisumu Branch</option>
+              <option value="all">All Stores &amp; Warehouses</option>
+              <option value="1">Main Branch</option>
             </select>
           </div>
           <div>
@@ -1670,10 +1676,7 @@
           <div>
             <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Store / Warehouse</label>
             <select class="form-field-input" id="mov-store-select" style="width:100%;margin-top:4px;">
-              <option>Nairobi Main Branch</option>
-              <option>Westlands Branch</option>
-              <option>Mombasa CBD Branch</option>
-              <option>Kisumu Branch</option>
+              <option value="1">Main Branch</option>
             </select>
           </div>
           <div>
@@ -2179,10 +2182,7 @@
           <div>
             <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Store / Branch</label>
             <select class="form-field-input" id="emp-branch" style="width:100%;margin-top:4px;">
-              <option value="1">Nairobi Main Branch</option>
-              <option value="2">Westlands Branch</option>
-              <option value="3">Mombasa CBD Branch</option>
-              <option value="4">Kisumu Branch</option>
+              <option value="1">Main Branch</option>
             </select>
           </div>
           <div>
@@ -2325,6 +2325,36 @@
       <div class="modal-foot">
         <button class="btn-sm secondary" onclick="closeModal('change-password-modal')">Cancel</button>
         <button class="btn-sm" onclick="submitChangePassword()">Update Password</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD BRANCH MODAL -->
+  <div class="modal-overlay hidden" id="add-branch-modal" onclick="closeModal('add-branch-modal')">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:440px;">
+      <div class="modal-head">
+        <h3>Add Store Branch</h3>
+        <button class="modal-close" onclick="closeModal('add-branch-modal')">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;padding:4px 0 8px;">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Branch Name *</label>
+          <input type="text" class="form-field-input" id="new-branch-name" placeholder="e.g. Westlands Branch" style="width:100%;" />
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Location / Address</label>
+          <input type="text" class="form-field-input" id="new-branch-location" placeholder="e.g. Sarit Centre, Westlands" style="width:100%;" />
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Phone Number</label>
+          <input type="text" class="form-field-input" id="new-branch-phone" placeholder="e.g. +254 700 100 002" style="width:100%;" />
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-sm secondary" onclick="closeModal('add-branch-modal')">Cancel</button>
+        <button class="btn-sm" onclick="saveNewBranch()">Save Branch</button>
       </div>
     </div>
   </div>
