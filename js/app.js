@@ -4268,7 +4268,9 @@ async function loadAIInsights() {
   list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:12px 0">Loading live insights...</div>';
 
   try {
-    const res = await fetch('/api/ai/insights');
+    const res = await fetch('/api/ai/insights', {
+      headers: state.token ? { 'Authorization': 'Bearer ' + state.token } : {}
+    });
     const data = await res.json();
 
     if (!data.insights || data.insights.length === 0) {
@@ -4361,7 +4363,10 @@ async function sendAIMessage() {
   try {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(state.token ? { 'Authorization': 'Bearer ' + state.token } : {})
+      },
       body: JSON.stringify({ message: q, history: _aiHistory })
     });
 
