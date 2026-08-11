@@ -620,22 +620,45 @@ async function loadDashboardKPIs() {
       state.chartInstances.revenue.update();
     }
 
-    // Sparklines
-    if (totalRev > 0) {
-      const revSpark = [Math.round(totalRev * 0.1), Math.round(totalRev * 0.12), Math.round(totalRev * 0.14), Math.round(totalRev * 0.15), Math.round(totalRev * 0.18), Math.round(totalRev * 0.22)];
-      const profSpark = revSpark.map(v => Math.round(v * 0.3));
-      const txnSpark = [Math.round(totalTxCount * 0.1), Math.round(totalTxCount * 0.15), Math.round(totalTxCount * 0.2), Math.round(totalTxCount * 0.25), Math.round(totalTxCount * 0.3)];
-      const debtSpark = [Math.round(arBalance * 0.2), Math.round(arBalance * 0.4), Math.round(arBalance * 0.6), Math.round(arBalance * 0.8), Math.round(arBalance)];
-      drawSparkline('spark-revenue', revSpark, '#4F46E5');
-      drawSparkline('spark-profit', profSpark, '#10B981');
-      drawSparkline('spark-txn', txnSpark, '#8B5CF6');
-      drawSparkline('spark-debt', debtSpark, '#EF4444');
+    // Sparklines (calculated from live transactions chronologically)
+    const numPoints = 7;
+    let revSpark = Array(numPoints).fill(0);
+    let profSpark = Array(numPoints).fill(0);
+    let txnSpark = Array(numPoints).fill(0);
+    let debtSpark = Array(numPoints).fill(0);
+
+    if (txs.length > 0) {
+      const sortedTxs = [...txs].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const chunkSize = sortedTxs.length / numPoints;
+      
+      const creditSalesBuckets = Array(numPoints).fill(0);
+      
+      for (let i = 0; i < sortedTxs.length; i++) {
+        const bucketIndex = Math.min(Math.floor(i / chunkSize), numPoints - 1);
+        const t = sortedTxs[i];
+        
+        revSpark[bucketIndex] += t.total || 0;
+        profSpark[bucketIndex] += (t.total || 0) * 0.3; // 30% estimated gross margin
+        txnSpark[bucketIndex] += 1;
+        
+        if (t.payment_method === 'credit') {
+          creditSalesBuckets[bucketIndex] += t.total || 0;
+        }
+      }
+      
+      // Calculate outstanding debt trend working backward from arBalance
+      debtSpark[numPoints - 1] = arBalance;
+      for (let i = numPoints - 2; i >= 0; i--) {
+        debtSpark[i] = Math.max(0, debtSpark[i + 1] - creditSalesBuckets[i + 1]);
+      }
     } else {
-      drawSparkline('spark-revenue', [0,0,0,0,0,0,0], '#4F46E5');
-      drawSparkline('spark-profit', [0,0,0,0,0,0,0], '#10B981');
-      drawSparkline('spark-txn', [0,0,0,0,0,0,0], '#8B5CF6');
-      drawSparkline('spark-debt', [0,0,0,0,0,0,0], '#EF4444');
+      debtSpark = Array(numPoints).fill(arBalance);
     }
+
+    drawSparkline('spark-revenue', revSpark, '#4F46E5');
+    drawSparkline('spark-profit', profSpark, '#10B981');
+    drawSparkline('spark-txn', txnSpark, '#8B5CF6');
+    drawSparkline('spark-debt', debtSpark, '#EF4444');
 
     // 5. Stock Alerts List
     const stockListEl = document.getElementById('dash-stock-list');
@@ -4020,6 +4043,7 @@ function initCRMCharts(customers = []) {
 function drawSparkline(id, data, color) {
   const el = document.getElementById(id);
   if (!el) return;
+  el.innerHTML = ''; // Prevent duplication by clearing container
   const canvas = document.createElement('canvas');
   canvas.style.width = '100%'; canvas.style.height = '36px';
   el.appendChild(canvas);
@@ -4859,12 +4883,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCustomers();
     if (state.user.role === 'owner' || state.user.role === 'manager') {
       loadDashboardKPIs();
-      setTimeout(() => {
-        drawSparkline('spark-revenue', [62,68,74,71,80,78,84], '#4F46E5');
-        drawSparkline('spark-profit', [22,28,32,30,35,34,36], '#10B981');
-        drawSparkline('spark-txn', [140,160,175,158,182,178,190], '#8B5CF6');
-        drawSparkline('spark-debt', [95,102,98,110,108,115,120], '#EF4444');
-      }, 200);
     }
   }
 });
