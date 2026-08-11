@@ -93,18 +93,37 @@ async function markAttendance(req, res) {
 async function getPayrollSummary(req, res) {
   try {
     const db = await getDb();
-    const rows = query(db, `
+    
+    // Get overall metrics
+    const overall = query(db, `
       SELECT
-        COUNT(*) AS total_employees,
-        SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present_today,
-        SUM(CASE WHEN status = 'on_leave' THEN 1 ELSE 0 END) AS on_leave,
-        SUM(CASE WHEN status = 'absent'   THEN 1 ELSE 0 END) AS absent,
-        ROUND(SUM(salary), 2) AS total_payroll,
-        ROUND(AVG(attendance_pct), 1) AS avg_attendance
-      FROM employees WHERE status != 'terminated'
+        (SELECT COUNT(*) FROM employees WHERE status != 'terminated') AS total_employees,
+        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'present') AS present_today,
+        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'on_leave') AS on_leave,
+        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'absent') AS absent,
+        (SELECT COALESCE(SUM(salary), 0) FROM employees WHERE status != 'terminated') AS total_payroll,
+        (SELECT COALESCE(ROUND(AVG(attendance_pct), 1), 100) FROM employees WHERE status != 'terminated') AS avg_attendance
     `);
-    res.json({ success: true, data: rows[0] });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    
+    // Get 14-day attendance history
+    const history = query(db, `
+      SELECT date,
+             SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present,
+             SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) AS absent
+      FROM attendance
+      WHERE date >= date('now', '-14 days')
+      GROUP BY date
+      ORDER BY date ASC
+    `);
+
+    res.json({
+      success: true,
+      data: overall[0] || {},
+      history: history || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }
 
 module.exports = { getEmployees, getEmployee, createEmployee, updateEmployee,

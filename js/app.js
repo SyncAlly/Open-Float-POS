@@ -546,7 +546,7 @@ async function loadDashboardKPIs() {
     const [overviewRes, inventoryRes, txsRes, hrRes, prRes] = await Promise.allSettled([
       apiGet('/api/accounting/overview'),
       apiGet('/api/inventory'),
-      apiGet('/api/sales/transactions'),
+      apiGet('/api/sales/transactions?limit=1000'),
       apiGet('/api/hr/employees'),
       apiGet('/api/procurement/requests')
     ]);
@@ -556,6 +556,8 @@ async function loadDashboardKPIs() {
     const txs = txsRes.status === 'fulfilled' ? (txsRes.value.data || []) : [];
     const employees = hrRes.status === 'fulfilled' ? (hrRes.value.data || []) : [];
     const prs = prRes.status === 'fulfilled' ? (prRes.value.data || []) : [];
+
+    state.dashboardTxs = txs; // Cache transactions for period chart updating
 
     const setKPI = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
@@ -3023,28 +3025,99 @@ async function updateDashboard() {
 
   // Dynamic Chart & KPI scaling based on selected period
   if (state.chartInstances.revenue) {
-    let labels, revData, profitData, formatUnit;
+    let labels = [];
+    let revData = [];
+    let profitData = [];
+    let formatUnit = v => 'KES ' + Math.round(v/1000) + 'k';
+    
+    const txs = state.dashboardTxs || [];
+    
     if (period === 'today') {
-      labels = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00'];
-      revData = [18400, 42100, 85300, 112000, 145800, 184500];
-      profitData = [5500, 12600, 25500, 33600, 43700, 55300];
-      formatUnit = v => 'KES ' + Math.round(v/1000) + 'k';
+      labels = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+      revData = Array(7).fill(0);
+      profitData = Array(7).fill(0);
+      
+      const todayStr = new Date().toISOString().slice(0, 10);
+      txs.forEach(t => {
+        if (t.created_at && t.created_at.startsWith(todayStr) && t.status === 'completed') {
+          const date = new Date(t.created_at.replace(' ', 'T'));
+          const hour = date.getHours();
+          let bucket = 0;
+          if (hour < 9) bucket = 0;
+          else if (hour < 11) bucket = 1;
+          else if (hour < 13) bucket = 2;
+          else if (hour < 15) bucket = 3;
+          else if (hour < 17) bucket = 4;
+          else if (hour < 19) bucket = 5;
+          else bucket = 6;
+          
+          revData[bucket] += t.total || 0;
+          profitData[bucket] += (t.total || 0) * 0.3; // 30% estimated margin
+        }
+      });
+      formatUnit = v => 'KES ' + Math.round(v);
     } else if (period === 'week') {
       labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      revData = [240000, 310000, 280000, 450000, 520000, 680000, 410000];
-      profitData = [72000, 93000, 84000, 135000, 156000, 204000, 123000];
-      formatUnit = v => 'KES ' + Math.round(v/1000) + 'k';
+      revData = Array(7).fill(0);
+      profitData = Array(7).fill(0);
+      
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      
+      txs.forEach(t => {
+        if (t.created_at && t.status === 'completed') {
+          const date = new Date(t.created_at.replace(' ', 'T'));
+          if (date >= oneWeekAgo) {
+            const day = date.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+            const bucket = day === 0 ? 6 : day - 1; // Mon=0, ..., Sun=6
+            revData[bucket] += t.total || 0;
+            profitData[bucket] += (t.total || 0) * 0.3;
+          }
+        }
+      });
     } else if (period === 'year') {
       labels = ['Q1', 'Q2', 'Q3', 'Q4'];
-      revData = [19100000, 21700000, 24200000, 26500000];
-      profitData = [5730000, 6510000, 7260000, 7950000];
+      revData = Array(4).fill(0);
+      profitData = Array(4).fill(0);
+      
+      const currentYear = new Date().getFullYear();
+      txs.forEach(t => {
+        if (t.created_at && t.status === 'completed') {
+          const date = new Date(t.created_at.replace(' ', 'T'));
+          if (date.getFullYear() === currentYear) {
+            const bucket = Math.floor(date.getMonth() / 3);
+            revData[bucket] += t.total || 0;
+            profitData[bucket] += (t.total || 0) * 0.3;
+          }
+        }
+      });
       formatUnit = v => 'KES ' + (v/1000000).toFixed(1) + 'M';
     } else {
-      // Month
-      labels = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
-      revData = [5800000, 6200000, 7100000, 6800000, 7800000, 8400000];
-      profitData = [1200000, 1450000, 1820000, 1680000, 1950000, 2100000];
-      formatUnit = v => 'KES ' + (v/1000000).toFixed(1) + 'M';
+      // Month (default - showing weeks)
+      labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+      revData = Array(4).fill(0);
+      profitData = Array(4).fill(0);
+      
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+      
+      txs.forEach(t => {
+        if (t.created_at && t.status === 'completed') {
+          const date = new Date(t.created_at.replace(' ', 'T'));
+          if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) {
+            const dayOfMonth = date.getDate();
+            let bucket = 0;
+            if (dayOfMonth <= 7) bucket = 0;
+            else if (dayOfMonth <= 14) bucket = 1;
+            else if (dayOfMonth <= 21) bucket = 2;
+            else bucket = 3;
+            
+            revData[bucket] += t.total || 0;
+            profitData[bucket] += (t.total || 0) * 0.3;
+          }
+        }
+      });
+      formatUnit = v => 'KES ' + (v >= 1000 ? Math.round(v/1000) + 'k' : Math.round(v));
     }
 
     state.chartInstances.revenue.data.labels = labels;
@@ -3293,11 +3366,14 @@ let _accJournalEntriesCache = [];
 
 async function loadAccounting() {
   try {
-    const [ovRes, ledRes, jeRes] = await Promise.all([
+    const [ovRes, ledRes, jeRes, txsRes] = await Promise.all([
       apiGet('/api/accounting/overview'),
       apiGet('/api/accounting/ledgers'),
-      apiGet('/api/accounting/entries')
+      apiGet('/api/accounting/entries'),
+      apiGet('/api/sales/transactions?limit=1000')
     ]);
+
+    _accJournalEntriesCache = jeRes.data || [];
 
     // Update Overview KPIs & Charts
     if (ovRes && ovRes.data) {
@@ -3310,13 +3386,74 @@ async function loadAccounting() {
       setEl('acc-kpi-ar', fmt(d.outstanding_ar));
 
       if (state.chartInstances.cashflow) {
-        state.chartInstances.cashflow.data.datasets[0].data = d.total_revenue > 0 ? [0, 0, 0, 0, 0, Math.round(d.total_revenue / 1000)] : [0, 0, 0, 0, 0, 0];
-        state.chartInstances.cashflow.data.datasets[1].data = d.total_expenses > 0 ? [0, 0, 0, 0, 0, Math.round(d.total_expenses / 1000)] : [0, 0, 0, 0, 0, 0];
+        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const today = new Date();
+        const buckets = [];
+        for (let i = 5; i >= 0; i--) {
+          const dDate = new Date(today.getFullYear(), today.getMonth() - i, 1);
+          buckets.push({
+            label: monthNames[dDate.getMonth()],
+            year: dDate.getFullYear(),
+            month: dDate.getMonth(),
+            inflow: 0,
+            outflow: 0
+          });
+        }
+        
+        // Add transactions to inflows
+        const txs = txsRes.data || [];
+        txs.forEach(t => {
+          if (t.status === 'completed' && t.created_at) {
+            const dt = new Date(t.created_at.replace(' ', 'T'));
+            const b = buckets.find(x => x.year === dt.getFullYear() && x.month === dt.getMonth());
+            if (b) {
+              b.inflow += t.total || 0;
+            }
+          }
+        });
+
+        // Add journal entries to inflows/outflows
+        const jes = jeRes.data || [];
+        jes.forEach(j => {
+          if (j.created_at) {
+            const dt = new Date(j.created_at.replace(' ', 'T'));
+            const b = buckets.find(x => x.year === dt.getFullYear() && x.month === dt.getMonth());
+            if (b) {
+              if (j.type === 'income') {
+                b.inflow += j.amount || 0;
+              } else if (j.type === 'expense') {
+                b.outflow += j.amount || 0;
+              }
+            }
+          }
+        });
+
+        state.chartInstances.cashflow.data.labels = buckets.map(x => x.label);
+        state.chartInstances.cashflow.data.datasets[0].data = buckets.map(x => Math.round(x.inflow));
+        state.chartInstances.cashflow.data.datasets[1].data = buckets.map(x => Math.round(x.outflow));
         state.chartInstances.cashflow.update();
       }
+
       if (state.chartInstances.expense) {
-        const exp = d.total_expenses || 0;
-        state.chartInstances.expense.data.datasets[0].data = exp > 0 ? [Math.round(exp * 0.5), Math.round(exp * 0.3), Math.round(exp * 0.1), Math.round(exp * 0.1)] : [0, 0, 0, 0];
+        const jes = jeRes.data || [];
+        const expCounts = { cogs: 0, salaries: 0, rent: 0, other: 0 };
+        jes.forEach(j => {
+          if (j.type === 'expense') {
+            const cat = (j.category || 'other').toLowerCase();
+            if (cat in expCounts) {
+              expCounts[cat] += j.amount || 0;
+            } else {
+              expCounts.other += j.amount || 0;
+            }
+          }
+        });
+
+        state.chartInstances.expense.data.datasets[0].data = [
+          Math.round(expCounts.cogs),
+          Math.round(expCounts.salaries),
+          Math.round(expCounts.rent),
+          Math.round(expCounts.other)
+        ];
         state.chartInstances.expense.update();
       }
     }
@@ -3505,10 +3642,26 @@ async function loadHR() {
       setEl('hr-kpi-leave-sub', `${d.on_leave || 0} on leave · ${d.absent || 0} absent`);
 
       if (state.chartInstances.attend) {
-        const present = d.present_today || 0;
-        const absent = d.absent || 0;
-        state.chartInstances.attend.data.datasets[0].data = Array(14).fill(present);
-        state.chartInstances.attend.data.datasets[1].data = Array(14).fill(absent);
+        const history = summaryRes.history || [];
+        const labels = [];
+        const presentData = [];
+        const absentData = [];
+        
+        const today = new Date();
+        for (let i = 13; i >= 0; i--) {
+          const dDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+          const dateStr = dDate.toISOString().slice(0, 10);
+          
+          labels.push(dDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+          
+          const match = history.find(h => h.date === dateStr);
+          presentData.push(match ? match.present : 0);
+          absentData.push(match ? match.absent : 0);
+        }
+        
+        state.chartInstances.attend.data.labels = labels;
+        state.chartInstances.attend.data.datasets[0].data = presentData;
+        state.chartInstances.attend.data.datasets[1].data = absentData;
         state.chartInstances.attend.update();
       }
       if (state.chartInstances.payroll) {
@@ -3761,8 +3914,31 @@ async function loadProcurement() {
     renderPRRows(_prCache, _prCurrentTab);
 
     if (state.chartInstances.procure) {
-      const totalPurchases = _prCache.reduce((sum, p) => sum + (p.total_value || 0), 0);
-      state.chartInstances.procure.data.datasets[0].data = totalPurchases > 0 ? [0, 0, 0, 0, 0, Math.round(totalPurchases / 1000)] : [0, 0, 0, 0, 0, 0];
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const today = new Date();
+      const buckets = [];
+      for (let i = 5; i >= 0; i--) {
+        const dDate = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        buckets.push({
+          label: monthNames[dDate.getMonth()],
+          year: dDate.getFullYear(),
+          month: dDate.getMonth(),
+          total: 0
+        });
+      }
+      
+      _prCache.forEach(p => {
+        if (p.created_at) {
+          const dt = new Date(p.created_at.replace(' ', 'T'));
+          const b = buckets.find(x => x.year === dt.getFullYear() && x.month === dt.getMonth());
+          if (b) {
+            b.total += (p.total_value || 0) / 1000;
+          }
+        }
+      });
+      
+      state.chartInstances.procure.data.labels = buckets.map(x => x.label);
+      state.chartInstances.procure.data.datasets[0].data = buckets.map(x => Math.round(x.total));
       state.chartInstances.procure.update();
     }
   } catch (e) {
