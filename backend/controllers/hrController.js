@@ -44,13 +44,39 @@ async function createEmployee(req, res) {
 async function updateEmployee(req, res) {
   try {
     const db = await getDb();
+    
+    // Get existing employee record first
+    const existing = query(db, 'SELECT * FROM employees WHERE id = ?', [req.params.id]);
+    if (!existing.length) return res.status(404).json({ error: 'Employee not found.' });
+    const oldEmp = existing[0];
+
     const allowed = ['name','role','branch_id','salary','phone','email','hire_date','status','attendance_pct'];
     const fields = req.body;
     const sets = Object.keys(fields).filter(k => allowed.includes(k));
     if (!sets.length) return res.status(400).json({ error: 'No valid fields provided.' });
+    
     const sql = `UPDATE employees SET ${sets.map(k => `${k} = ?`).join(', ')} WHERE id = ?`;
     const result = exec(db, sql, [...sets.map(k => fields[k]), req.params.id]);
     if (!result.changes) return res.status(404).json({ error: 'Employee not found.' });
+
+    // Sync corresponding user account if it exists (by matching email)
+    const empEmail = (fields.email !== undefined ? fields.email : oldEmp.email || '').toLowerCase();
+    const oldEmail = (oldEmp.email || '').toLowerCase();
+
+    if (empEmail || oldEmail) {
+      const uSets = [];
+      const uParams = [];
+      if (fields.branch_id !== undefined) { uSets.push('branch_id = ?'); uParams.push(fields.branch_id); }
+      if (fields.name !== undefined)      { uSets.push('name = ?');      uParams.push(fields.name); }
+      if (fields.role !== undefined)      { uSets.push('role = ?');      uParams.push(fields.role); }
+      if (fields.email !== undefined)     { uSets.push('email = ?');     uParams.push(fields.email.toLowerCase()); }
+
+      if (uSets.length > 0) {
+        uParams.push(oldEmail || empEmail, empEmail || oldEmail);
+        exec(db, `UPDATE users SET ${uSets.join(', ')} WHERE LOWER(email) = ? OR LOWER(email) = ?`, uParams);
+      }
+    }
+
     res.json({ success: true, message: 'Employee updated.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 }

@@ -13,6 +13,18 @@ async function login(req, res) {
     if (!email || !password) return res.status(400).json({ error: 'Email and password required.' });
 
     const db = await getDb();
+
+    // Auto-sync branch_id from employees record if HR updated employee's branch
+    try {
+      exec(db, `
+        UPDATE users 
+        SET branch_id = (SELECT branch_id FROM employees WHERE LOWER(employees.email) = ? AND employees.branch_id IS NOT NULL LIMIT 1)
+        WHERE LOWER(email) = ? AND EXISTS (SELECT 1 FROM employees WHERE LOWER(employees.email) = ? AND employees.branch_id IS NOT NULL)
+      `, [email.toLowerCase(), email.toLowerCase(), email.toLowerCase()]);
+    } catch (syncErr) {
+      console.warn('[Login] Branch sync warning:', syncErr.message);
+    }
+
     const users = query(db,
       `SELECT u.*, b.name AS branch_name FROM users u
        LEFT JOIN branches b ON u.branch_id = b.id
