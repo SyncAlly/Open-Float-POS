@@ -37,11 +37,7 @@ async function handleLoginSubmit(e) {
 
   const DEMO_PASSWORDS = { 'owner@openfloat.com': 'admin123' };
   const DEMO_USERS = {
-    'owner@openfloat.com':  { name: 'Owner',          role: 'owner',     email: 'owner@openfloat.com' },
-    'david@openfloat.com':  { name: 'David Kamau',    role: 'manager',   email: 'david@openfloat.com' },
-    'james@openfloat.com':  { name: 'James Mwangi',   role: 'cashier',   email: 'james@openfloat.com' },
-    'nancy@openfloat.com':  { name: 'Nancy Wambui',   role: 'hr',        email: 'nancy@openfloat.com' },
-    'grace@openfloat.com':  { name: 'Grace Odhiambo', role: 'accountant',email: 'grace@openfloat.com' }
+    'owner@openfloat.com':  { name: 'Owner', role: 'owner', email: 'owner@openfloat.com' }
   };
 
   // Helper — calls completeLogin in its own isolated try so any error inside
@@ -91,7 +87,7 @@ async function handleLoginSubmit(e) {
     }
   } finally {
     submitBtn.disabled = false;
-    submitBtn.querySelector('span').textContent = 'Sign In to Terminal';
+    submitBtn.querySelector('span').textContent = 'Sign In';
   }
 
   if (loginSuccess) console.log('[Login] Authenticated as', email);

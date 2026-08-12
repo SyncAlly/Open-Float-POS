@@ -31,15 +31,6 @@
         <p>Enterprise Intelligent Commerce Platform</p>
       </div>
 
-      <!-- SERVER & .ENV STATUS GUARD -->
-      <div id="login-server-guard" class="login-guard-box">
-        <div class="guard-pill" id="guard-pill">
-          <span class="guard-dot amber" id="guard-dot"></span>
-          <span id="guard-status-text">Checking backend server &amp; .env...</span>
-        </div>
-        <div id="guard-details" class="guard-details hidden"></div>
-      </div>
-
       <form id="login-form" onsubmit="handleLoginSubmit(event)" class="login-form">
         <div class="form-group">
           <label for="login-email">Work Email</label>
@@ -54,21 +45,10 @@
         <div id="login-error" class="login-error hidden"></div>
 
         <button type="submit" id="login-submit-btn" class="btn-primary-block">
-          <span>Sign In to Terminal</span>
+          <span>Sign In</span>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 12l4-4-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </form>
-
-      <div class="demo-accounts-box">
-        <span class="demo-title">Quick Demo Login:</span>
-        <div class="demo-chips">
-          <button type="button" class="demo-chip" onclick="fillDemoLogin('owner@openfloat.com', 'admin123')">Owner</button>
-          <button type="button" class="demo-chip" onclick="fillDemoLogin('david@openfloat.com', 'staff123')">Store Manager</button>
-          <button type="button" class="demo-chip" onclick="fillDemoLogin('james@openfloat.com', 'staff123')">Cashier</button>
-          <button type="button" class="demo-chip" onclick="fillDemoLogin('nancy@openfloat.com', 'staff123')">HR Officer</button>
-          <button type="button" class="demo-chip" onclick="fillDemoLogin('grace@openfloat.com', 'staff123')">Accountant</button>
-        </div>
-      </div>
 
       <div class="login-footer">
         <span>OpenFloat POS X v1.0 &bull; Secure Multi-Branch Engine</span>

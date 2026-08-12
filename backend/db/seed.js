@@ -50,17 +50,13 @@ async function seed() {
   // ── USERS ─────────────────────────────────────────────────────────────────────
   const passwordHash = bcrypt.hashSync('admin123', 10);
   const users = [
-    ['Owner', 'owner@openfloat.com', passwordHash, 'owner', 1],
-    ['David Kamau', 'david@openfloat.com', bcrypt.hashSync('staff123', 10), 'manager', 1],
-    ['James Mwangi', 'james@openfloat.com', bcrypt.hashSync('staff123', 10), 'cashier', 1],
-    ['Nancy Wambui', 'nancy@openfloat.com', bcrypt.hashSync('staff123', 10), 'hr', 1],
-    ['Grace Odhiambo', 'grace@openfloat.com', bcrypt.hashSync('staff123', 10), 'accountant', 2],
+    ['Owner', 'owner@openfloat.com', passwordHash, 'owner', 1]
   ];
   users.forEach(([name, email, hash, role, branch_id]) =>
     run('INSERT OR IGNORE INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
       [name, email, hash, role, branch_id])
   );
-  console.log('[Seed] Users seeded.');
+  console.log('[Seed] Owner user seeded.');
 
   // ── CATEGORIES ────────────────────────────────────────────────────────────────
   const categories = [
