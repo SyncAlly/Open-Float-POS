@@ -85,9 +85,9 @@ async function changePassword(req, res) {
 }
 
 async function register(req, res) {
-  // Only owner/admin can create new user accounts
-  if (req.user.role !== 'owner' && req.user.role !== 'manager') {
-    return res.status(403).json({ error: 'Only owners or managers can register new users.' });
+  // Only owner, manager, or HR can create new user accounts
+  if (req.user.role !== 'owner' && req.user.role !== 'manager' && req.user.role !== 'hr') {
+    return res.status(403).json({ error: 'Only owners, managers, or HR officers can register new users.' });
   }
   try {
     const { name, email, password, role, branch_id } = req.body;
