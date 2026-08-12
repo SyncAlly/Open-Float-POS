@@ -1100,43 +1100,8 @@
           <div class="table-wrap">
             <table class="data-table">
               <thead><tr><th>Customer</th><th>Item / Service</th><th>Total Value</th><th>Down Payment</th><th>Monthly Instalment</th><th>Instalments Paid</th><th>Balance</th><th>Next Due</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>
-                <tr>
-                  <td><strong>Amina Khalid</strong><br><small style="color:var(--text-muted);">+254 711 000 002</small></td>
-                  <td>Samsung Smart TV 43"</td>
-                  <td>KES 38,500</td>
-                  <td>KES 10,000</td>
-                  <td>KES 5,750</td>
-                  <td>3 / 5<br><div class="hp-progress-bar"><div class="hp-progress-bar-fill" style="width:60%"></div></div></td>
-                  <td><strong>KES 21,250</strong></td>
-                  <td>Aug 5, 2026</td>
-                  <td><span class="badge badge-green">Current</span></td>
-                  <td><button class="btn-sm" style="padding:3px 8px;font-size:11px;" onclick="showToast('Recording payment for Amina Khalid')">Record Payment</button></td>
-                </tr>
-                <tr>
-                  <td><strong>Faith Wanjiku</strong><br><small style="color:var(--text-muted);">+254 711 000 003</small></td>
-                  <td>LG Refrigerator 200L</td>
-                  <td>KES 45,000</td>
-                  <td>KES 15,000</td>
-                  <td>KES 6,000</td>
-                  <td>2 / 5<br><div class="hp-progress-bar"><div class="hp-progress-bar-fill" style="width:40%;background:var(--amber)"></div></div></td>
-                  <td><strong>KES 27,000</strong></td>
-                  <td>Aug 10, 2026</td>
-                  <td><span class="badge badge-amber">Overdue</span></td>
-                  <td><button class="btn-sm" style="padding:3px 8px;font-size:11px;" onclick="showToast('Recording payment for Faith Wanjiku')">Record Payment</button></td>
-                </tr>
-                <tr>
-                  <td><strong>Kama Superstore</strong><br><small style="color:var(--text-muted);">B2B Account</small></td>
-                  <td>Commercial Freezer Unit</td>
-                  <td>KES 120,000</td>
-                  <td>KES 40,000</td>
-                  <td>KES 16,000</td>
-                  <td>1 / 5<br><div class="hp-progress-bar"><div class="hp-progress-bar-fill" style="width:20%"></div></div></td>
-                  <td><strong>KES 80,000</strong></td>
-                  <td>Sep 1, 2026</td>
-                  <td><span class="badge badge-green">Current</span></td>
-                  <td><button class="btn-sm" style="padding:3px 8px;font-size:11px;" onclick="showToast('Recording payment for Kama Superstore')">Record Payment</button></td>
-                </tr>
+              <tbody id="hp-tbody">
+                <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-muted);">Loading hire purchase agreements…</td></tr>
               </tbody>
             </table>
           </div>
@@ -1324,62 +1289,8 @@
           <div class="table-wrap">
             <table class="data-table">
               <thead><tr><th>Service Code</th><th>Service Name</th><th>Category</th><th>Unit</th><th>Price (KES)</th><th>VAT Applicable</th><th>Available At</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>
-                <tr>
-                  <td><code>SRV-001</code></td>
-                  <td><strong>Vehicle Inspection</strong></td>
-                  <td><span class="service-chip">Automotive</span></td>
-                  <td>Per Session</td>
-                  <td><strong>3,500</strong></td>
-                  <td><span class="badge badge-green">Yes</span></td>
-                  <td>All Branches</td>
-                  <td><span class="badge badge-green">Active</span></td>
-                  <td><button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="showToast('Edit SRV-001')">Edit</button></td>
-                </tr>
-                <tr>
-                  <td><code>SRV-002</code></td>
-                  <td><strong>Delivery Fee (CBD)</strong></td>
-                  <td><span class="service-chip">Logistics</span></td>
-                  <td>Per Trip</td>
-                  <td><strong>500</strong></td>
-                  <td><span class="badge badge-amber">No</span></td>
-                  <td>Nairobi Main Branch</td>
-                  <td><span class="badge badge-green">Active</span></td>
-                  <td><button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="showToast('Edit SRV-002')">Edit</button></td>
-                </tr>
-                <tr>
-                  <td><code>SRV-003</code></td>
-                  <td><strong>Installation Service</strong></td>
-                  <td><span class="service-chip">Electronics</span></td>
-                  <td>Per Unit</td>
-                  <td><strong>2,000</strong></td>
-                  <td><span class="badge badge-green">Yes</span></td>
-                  <td>All Branches</td>
-                  <td><span class="badge badge-green">Active</span></td>
-                  <td><button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="showToast('Edit SRV-003')">Edit</button></td>
-                </tr>
-                <tr>
-                  <td><code>SRV-004</code></td>
-                  <td><strong>Equipment Repair</strong></td>
-                  <td><span class="service-chip">Maintenance</span></td>
-                  <td>Per Hour</td>
-                  <td><strong>1,500</strong></td>
-                  <td><span class="badge badge-green">Yes</span></td>
-                  <td>Westlands Branch</td>
-                  <td><span class="badge badge-green">Active</span></td>
-                  <td><button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="showToast('Edit SRV-004')">Edit</button></td>
-                </tr>
-                <tr>
-                  <td><code>SRV-005</code></td>
-                  <td><strong>Cleaning &amp; Sanitation</strong></td>
-                  <td><span class="service-chip">Facilities</span></td>
-                  <td>Per Visit</td>
-                  <td><strong>4,500</strong></td>
-                  <td><span class="badge badge-green">Yes</span></td>
-                  <td>All Branches</td>
-                  <td><span class="badge badge-amber">Inactive</span></td>
-                  <td><button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="showToast('Edit SRV-005')">Edit</button></td>
-                </tr>
+              <tbody id="srv-tbody">
+                <tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">Loading services catalogue…</td></tr>
               </tbody>
             </table>
           </div>
@@ -1421,73 +1332,8 @@
           <div class="table-wrap">
             <table class="data-table">
               <thead><tr><th>Movement ID</th><th>Date &amp; Time</th><th>Product</th><th>SKU</th><th>Type</th><th>Qty Change</th><th>Reason / Reference</th><th>Recorded By</th><th>Branch</th></tr></thead>
-              <tbody>
-                <tr>
-                  <td><code>MOV-0841</code></td>
-                  <td>Today, 09:14</td>
-                  <td>Cooking Oil 5L</td>
-                  <td><code>OIL-5L</code></td>
-                  <td><span class="badge badge-red">SALE</span></td>
-                  <td style="color:var(--red);font-weight:700;">-3</td>
-                  <td>TXN-20260729-A1B2</td>
-                  <td>James Mwangi</td>
-                  <td>Nairobi Main</td>
-                </tr>
-                <tr>
-                  <td><code>MOV-0840</code></td>
-                  <td>Today, 08:52</td>
-                  <td>Samsung Smart TV 43"</td>
-                  <td><code>TV-SMSNG-43</code></td>
-                  <td><span class="badge badge-green">RETURN</span></td>
-                  <td style="color:var(--green);font-weight:700;">+1</td>
-                  <td>Customer Return — Defective Unit</td>
-                  <td>David Kamau</td>
-                  <td>Nairobi Main</td>
-                </tr>
-                <tr>
-                  <td><code>MOV-0839</code></td>
-                  <td>Today, 08:30</td>
-                  <td>Fresh Yogurt 500ml</td>
-                  <td><code>YGT-500ML</code></td>
-                  <td><span class="badge badge-amber">EXPIRY</span></td>
-                  <td style="color:var(--amber);font-weight:700;">-24</td>
-                  <td>Batch expired Jul 28, 2026</td>
-                  <td>Nancy Wambui</td>
-                  <td>Nairobi Main</td>
-                </tr>
-                <tr>
-                  <td><code>MOV-0838</code></td>
-                  <td>Yesterday</td>
-                  <td>Bleach 1L</td>
-                  <td><code>BLEACH-1L</code></td>
-                  <td><span class="badge badge-red">DAMAGE</span></td>
-                  <td style="color:var(--red);font-weight:700;">-6</td>
-                  <td>Warehouse spillage — written off</td>
-                  <td>Peter Odhiambo</td>
-                  <td>Nairobi Main</td>
-                </tr>
-                <tr>
-                  <td><code>MOV-0837</code></td>
-                  <td>Yesterday</td>
-                  <td>Basmati Rice 5kg</td>
-                  <td><code>RICE-5KG</code></td>
-                  <td><span class="badge" style="background:#EFF6FF;color:#1D4ED8;">ADJUSTMENT</span></td>
-                  <td style="color:var(--blue);font-weight:700;">+50</td>
-                  <td>Stock recount correction</td>
-                  <td>David Kamau</td>
-                  <td>Nairobi Main</td>
-                </tr>
-                <tr>
-                  <td><code>MOV-0836</code></td>
-                  <td>Yesterday</td>
-                  <td>Milk Powder 400g</td>
-                  <td><code>MILK-400G</code></td>
-                  <td><span class="badge badge-green">PURCHASE</span></td>
-                  <td style="color:var(--green);font-weight:700;">+100</td>
-                  <td>PR-2341 — Bidco Africa Ltd</td>
-                  <td>David Kamau</td>
-                  <td>Nairobi Main</td>
-                </tr>
+              <tbody id="sm-tbody">
+                <tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">Loading stock movement log…</td></tr>
               </tbody>
             </table>
           </div>
