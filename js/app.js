@@ -572,7 +572,7 @@ async function loadPOSProducts() {
     renderProducts('all');
   } catch (e) {
     if (grid && state.productsCache.length === 0) {
-      grid.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">No products yet. <a href="#" onclick="loadPOSProducts()" style="color:#4F46E5;text-decoration:underline">Retry</a>.</div>';
+      grid.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">No products yet. <a href="#" onclick="loadPOSProducts()" style="color:#F97316;text-decoration:underline">Retry</a>.</div>';
     }
     if (e.code === 'NETWORK_ERROR') {
       console.warn('[POS] Server offline — retrying products later.');
@@ -653,7 +653,7 @@ async function loadDashboardKPIs() {
     const legendEl = document.getElementById('payment-legend-container');
     if (legendEl) {
       legendEl.innerHTML = `
-        <div class="legend-item"><span class="legend-dot" style="background:#4F46E5"></span>Cash <strong>${pct(pCounts.cash)}%</strong></div>
+        <div class="legend-item"><span class="legend-dot" style="background:#F97316"></span>Cash <strong>${pct(pCounts.cash)}%</strong></div>
         <div class="legend-item"><span class="legend-dot" style="background:#10B981"></span>M-Pesa <strong>${pct(pCounts.mpesa)}%</strong></div>
         <div class="legend-item"><span class="legend-dot" style="background:#F59E0B"></span>Card <strong>${pct(pCounts.card)}%</strong></div>
         <div class="legend-item"><span class="legend-dot" style="background:#EC4899"></span>Credit <strong>${pct(pCounts.credit)}%</strong></div>
@@ -712,7 +712,7 @@ async function loadDashboardKPIs() {
       debtSpark = Array(numPoints).fill(arBalance);
     }
 
-    drawSparkline('spark-revenue', revSpark, '#4F46E5');
+    drawSparkline('spark-revenue', revSpark, '#F97316');
     drawSparkline('spark-profit', profSpark, '#10B981');
     drawSparkline('spark-txn', txnSpark, '#8B5CF6');
     drawSparkline('spark-debt', debtSpark, '#EF4444');
@@ -789,7 +789,7 @@ async function loadDashboardKPIs() {
         txnListEl.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">No recent transactions recorded.</div>';
       } else {
         const bgColors = ['#EEF2FF', '#F0FDF4', '#FFF7ED', '#FDF2F8'];
-        const textColors = ['#4F46E5', '#10B981', '#F59E0B', '#EC4899'];
+        const textColors = ['#F97316', '#10B981', '#F59E0B', '#EC4899'];
 
         txnListEl.innerHTML = recentTxs.map((t, i) => {
           const name = t.customer_name || t.cashier_name || 'Walk-in Customer';
@@ -1147,7 +1147,7 @@ function openHPModal() {
 function generateHPStatement() {
   if (!_hpCache.length) { showToast('No agreements to generate statement'); return; }
   const html = `<html><head><title>Hire Purchase Statement</title>
-  <style>body{font-family:sans-serif;max-width:750px;margin:30px auto;color:#111;} h2{color:#4F46E5;} table{width:100%;border-collapse:collapse;margin-top:16px;} th,td{border:1px solid #ddd;padding:8px;font-size:12px;text-align:left;} th{background:#f3f4f6;} .total{font-weight:bold;}</style></head>
+  <style>body{font-family:sans-serif;max-width:750px;margin:30px auto;color:#111;} h2{color:#F97316;} table{width:100%;border-collapse:collapse;margin-top:16px;} th,td{border:1px solid #ddd;padding:8px;font-size:12px;text-align:left;} th{background:#f3f4f6;} .total{font-weight:bold;}</style></head>
   <body>
     <h2>OPENFLOAT POS X — Hire Purchase Statement</h2>
     <p>Generated on: ${new Date().toLocaleString('en-KE')}</p>
@@ -1359,7 +1359,7 @@ function renderCRMTopCustomers(customers) {
 
   // Sort by total_spent descending
   const sorted = [...customers].sort((a, b) => (b.total_spent || 0) - (a.total_spent || 0)).slice(0, 5);
-  const colors = ['#EEF2FF,#4F46E5', '#F0FDF4,#10B981', '#FFF7ED,#F59E0B', '#F5F3FF,#8B5CF6', '#EFF6FF,#1D4ED8'];
+  const colors = ['#FFF7ED,#F97316', '#F0FDF4,#10B981', '#FFF7ED,#F59E0B', '#F5F3FF,#8B5CF6', '#EFF6FF,#1D4ED8'];
 
   container.innerHTML = sorted.map((c, i) => {
     const initials = (c.name || 'CU').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
@@ -3340,7 +3340,7 @@ function initRevenueChart(chartType) {
         {
           label: 'Revenue (KES)',
           data: [0, 0, 0, 0, 0, 0],
-          borderColor: '#4F46E5',
+          borderColor: '#F97316',
           backgroundColor: revBg,
           fill: !isBar,
           tension: 0.35,
@@ -3381,7 +3381,7 @@ function initPaymentChart() {
     type: 'doughnut',
     data: {
       labels: ['Cash','M-Pesa','Card','Credit'],
-      datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#4F46E5','#10B981','#F59E0B','#EC4899'], borderWidth: 0 }]
+      datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#F97316','#10B981','#F59E0B','#EC4899'], borderWidth: 0 }]
     },
     options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
   });
@@ -3407,7 +3407,7 @@ function initAccountingCharts() {
   if (c2 && !state.chartInstances.expense) {
     state.chartInstances.expense = new Chart(c2, {
       type: 'doughnut',
-      data: { labels: ['COGS','Salaries','Rent','Other'], datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#4F46E5','#10B981','#F59E0B','#EC4899'], borderWidth: 0 }] },
+      data: { labels: ['COGS','Salaries','Rent','Other'], datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#F97316','#10B981','#F59E0B','#EC4899'], borderWidth: 0 }] },
       options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
     });
   }
@@ -3662,7 +3662,7 @@ function initHRCharts() {
   if (c2 && !state.chartInstances.payroll) {
     state.chartInstances.payroll = new Chart(c2, {
       type: 'doughnut',
-      data: { labels: ['Basic','Allowances','Deductions'], datasets: [{ data: [0,0,0], backgroundColor: ['#4F46E5','#10B981','#F59E0B'], borderWidth: 0 }] },
+      data: { labels: ['Basic','Allowances','Deductions'], datasets: [{ data: [0,0,0], backgroundColor: ['#F97316','#10B981','#F59E0B'], borderWidth: 0 }] },
       options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
     });
   }
@@ -3748,7 +3748,7 @@ function renderEmployeeRows(items) {
     const badgeClass = statusMap[e.status] || 'badge-green';
     const statusText = (e.status || 'present').replace('_', ' ').toUpperCase();
     const initials = (e.name || 'EM').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-    const colors = ['#EEF2FF;color:#4F46E5', '#F0FDF4;color:#10B981', '#FFF7ED;color:#F59E0B', '#F5F3FF;color:#8B5CF6'];
+    const colors = ['#FFF7ED;color:#F97316', '#F0FDF4;color:#10B981', '#FFF7ED;color:#F59E0B', '#F5F3FF;color:#8B5CF6'];
     const colorStyle = colors[Math.abs(e.id || 0) % colors.length];
 
     return `<tr>
@@ -4107,7 +4107,7 @@ function renderPRRows(items, tab = 'all') {
     const date = p.created_at ? new Date(p.created_at).toLocaleDateString('en-KE', { day:'numeric', month:'short', year:'numeric' }) : '—';
     const total = p.total_value ? 'KES ' + Number(p.total_value).toLocaleString() : '—';
     const initials = (p.requested_by_name || 'SY').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-    const colors = ['#EEF2FF;color:#4F46E5','#F0FDF4;color:#10B981','#FFF7ED;color:#F59E0B','#FDF2F8;color:#EC4899'];
+    const colors = ['#FFF7ED;color:#F97316','#F0FDF4;color:#10B981','#FFF7ED;color:#F59E0B','#FDF2F8;color:#EC4899'];
     const ci = Math.abs(p.id || 0) % colors.length;
     let actionBtns = '';
     if (p.status === 'pending') {
@@ -4316,7 +4316,7 @@ function initCRMCharts(customers = []) {
         datasets: [{
           label: 'Customers',
           data: [regCount, b2bCount, vipCount, riskCount, newCount],
-          backgroundColor: ['#4F46E5','#10B981','#8B5CF6','#EF4444','#F59E0B'],
+          backgroundColor: ['#F97316','#10B981','#8B5CF6','#EF4444','#F59E0B'],
           borderRadius: 4
         }]
       },
@@ -4970,7 +4970,7 @@ let _mapMarkers = [];
 
 // Nairobi landmark coordinates for vehicle pins
 const _NAIROBI_VEHICLES = [
-  { label: 'Van #1 — CBD',       lat: -1.2841, lng: 36.8235, color: '#4F46E5', status: 'in_transit' },
+  { label: 'Van #1 — CBD',       lat: -1.2841, lng: 36.8235, color: '#F97316', status: 'in_transit' },
   { label: 'Van #2 — Westlands', lat: -1.2697, lng: 36.8123, color: '#10B981', status: 'in_transit' },
   { label: 'Van #3 — Eastlands', lat: -1.2960, lng: 36.8650, color: '#F59E0B', status: 'delayed'    },
   { label: 'Van #4 — Karen',     lat: -1.3175, lng: 36.7117, color: '#8B5CF6', status: 'in_transit' },
@@ -5107,7 +5107,7 @@ function initLogisticsMap() {
     className: '',
     html: `<div style="
       width:36px;height:36px;border-radius:50%;
-      background:#4F46E5;border:3px solid white;
+      background:#F97316;border:3px solid white;
       box-shadow:0 2px 8px rgba(0,0,0,0.35);
       display:flex;align-items:center;justify-content:center;
     ">
