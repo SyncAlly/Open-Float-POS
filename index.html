@@ -224,17 +224,13 @@
           </button>
           <div class="notif-wrap">
             <button class="topbar-btn icon-btn" onclick="toggleNotifications()">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2a5 5 0 00-5 5v3l-1 2h12l-1-2V7a5 5 0 00-5-5z" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 13a1.5 1.5 0 003 0" stroke="currentColor" stroke-width="1.5"/></svg>
-              <span class="notif-badge">7</span>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2a5 5 0 00-5 5v3.5L2.5 12h13L14 10.5V7a5 5 0 00-5-5zM7.5 14a1.5 1.5 0 003 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="notif-badge" style="display:none;">0</span>
             </button>
             <div class="notif-panel" id="notif-panel">
               <div class="notif-header"><span>Notifications</span><button onclick="markAllRead()">Mark all read</button></div>
               <div class="notif-list">
-                <div class="notif-item unread"><div class="notif-dot red"></div><div><p>Milk powder near stock depletion (12 units left)</p><span>2 min ago</span></div></div>
-                <div class="notif-item unread"><div class="notif-dot amber"></div><div><p>3 supplier invoices due today</p><span>15 min ago</span></div></div>
-                <div class="notif-item unread"><div class="notif-dot blue"></div><div><p>M-Pesa payment KES 4,200 received</p><span>32 min ago</span></div></div>
-                <div class="notif-item unread"><div class="notif-dot red"></div><div><p>Employee absence: James Mwangi — Cashier</p><span>1 hr ago</span></div></div>
-                <div class="notif-item"><div class="notif-dot green"></div><div><p>Payroll KES 842,000 approved by Owner</p><span>3 hr ago</span></div></div>
+                <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12.5px;">Loading notifications…</div>
               </div>
             </div>
           </div>

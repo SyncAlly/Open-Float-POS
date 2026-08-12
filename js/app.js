@@ -544,11 +544,84 @@ function cycleTheme() {
 }
 
 function toggleNotifications() {
-  document.getElementById('notif-panel')?.classList.toggle('open');
+  const panel = document.getElementById('notif-panel');
+  if (panel) {
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+      updateNotificationsUI();
+    }
+  }
+}
+
+async function updateNotificationsUI() {
+  const badgeEl = document.querySelector('.notif-badge');
+  const listEl  = document.querySelector('#notif-panel .notif-list');
+  if (!listEl) return;
+
+  const notifs = [];
+
+  try {
+    // 1. Low stock alerts from live inventory
+    if (state.productsCache && state.productsCache.length > 0) {
+      const lowStock = state.productsCache.filter(p => (p.stock || 0) <= (p.min_stock || 5));
+      lowStock.slice(0, 3).forEach(p => {
+        notifs.push({
+          type: 'red',
+          text: `Low stock alert: ${p.name} (${p.stock || 0} units left)`,
+          time: 'Stock Alert'
+        });
+      });
+    }
+
+    // 2. Staff attendance status alerts from live HR cache
+    if (window._hrEmployeesCache && window._hrEmployeesCache.length > 0) {
+      const absentOrLeave = window._hrEmployeesCache.filter(e => e.status === 'absent' || e.status === 'on_leave');
+      absentOrLeave.slice(0, 3).forEach(e => {
+        const stText = (e.status || '').replace('_', ' ');
+        notifs.push({
+          type: 'amber',
+          text: `Staff status: ${e.name} (${e.role || 'Staff'}) is ${stText}`,
+          time: 'HR Alert'
+        });
+      });
+    }
+
+    // 3. Active session notification
+    if (state.user) {
+      notifs.push({
+        type: 'blue',
+        text: `Logged in as ${state.user.name} (${(state.user.role || 'user').toUpperCase()}) · ${state.currentBranch?.name || 'Main Branch'}`,
+        time: 'Active Session'
+      });
+    }
+  } catch (e) {
+    console.warn('[Notifications] Error generating notifications:', e.message);
+  }
+
+  if (notifs.length === 0) {
+    listEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12.5px;">No active notifications</div>';
+    if (badgeEl) badgeEl.style.display = 'none';
+  } else {
+    listEl.innerHTML = notifs.map(n => `
+      <div class="notif-item unread">
+        <div class="notif-dot ${n.type}"></div>
+        <div>
+          <p>${n.text}</p>
+          <span>${n.time}</span>
+        </div>
+      </div>
+    `).join('');
+    if (badgeEl) {
+      badgeEl.style.display = '';
+      badgeEl.textContent = notifs.length;
+    }
+  }
 }
 
 function markAllRead() {
   document.querySelectorAll('.notif-item.unread').forEach(i => i.classList.remove('unread'));
+  const badgeEl = document.querySelector('.notif-badge');
+  if (badgeEl) badgeEl.style.display = 'none';
   showToast('All notifications marked as read');
 }
 
