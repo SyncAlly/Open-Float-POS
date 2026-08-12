@@ -112,6 +112,7 @@ function completeLogin() {
   if (appShell) appShell.style.display = '';
   updateUserUI();
   setGreeting();
+  applyBranchSession(); // Lock or unlock branch switcher based on role
 
   const startView = getDefaultViewForRole(state.user?.role);
   navTo(startView);
@@ -122,8 +123,49 @@ function completeLogin() {
   loadPOSProducts();
   loadInventory();
   loadCustomers();
+  loadBranches(); // Load branches after authentication
   if (state.user?.role === 'owner' || state.user?.role === 'manager') {
     loadDashboardKPIs();
+  }
+}
+
+/**
+ * Apply branch session lock/unlock based on the logged-in user's role and assigned branch.
+ * - Owner: Branch switcher remains fully interactive.
+ * - All others: Switcher is locked to their assigned branch.
+ */
+function applyBranchSession() {
+  const user = state.user;
+  if (!user) return;
+
+  const branchNameEl = document.getElementById('branch-name');
+  const branchSelector = document.querySelector('.branch-selector');
+  const branchStatusEl = document.querySelector('.branch-status');
+
+  const assignedBranch = user.branch_name || 'Main Branch';
+  state.currentBranch = { name: assignedBranch, id: user.branch_id || 1 };
+
+  if (branchNameEl) branchNameEl.textContent = assignedBranch;
+
+  if (user.role === 'owner') {
+    // Owner: full access — restore interactive switcher
+    if (branchSelector) {
+      branchSelector.style.cursor = 'pointer';
+      branchSelector.style.opacity = '1';
+      branchSelector.setAttribute('onclick', 'openBranchModal()');
+      branchSelector.title = 'Click to switch branch';
+    }
+    if (branchStatusEl) branchStatusEl.textContent = 'Online · All Access';
+  } else {
+    // Non-owner: lock the branch switcher
+    if (branchSelector) {
+      branchSelector.style.cursor = 'default';
+      branchSelector.style.opacity = '0.85';
+      branchSelector.removeAttribute('onclick');
+      branchSelector.setAttribute('onclick', 'showToast("Branch locked to your assigned work location")');
+      branchSelector.title = 'Branch session locked';
+    }
+    if (branchStatusEl) branchStatusEl.textContent = 'Online · Branch Locked';
   }
 }
 
@@ -230,6 +272,8 @@ async function checkSession() {
 
       if (loginScreen) loginScreen.classList.add('hidden');
       updateUserUI();
+      applyBranchSession(); // Restore branch lock on session restore
+      loadBranches();       // Reload branches on session restore
       const startView = getDefaultViewForRole(state.user?.role);
       navTo(startView);
     } catch (e) {
@@ -3757,6 +3801,16 @@ function openEmployeeModal(id = null) {
   setVal('emp-phone', '');
   setVal('emp-email', '');
 
+  // Reset login credential fields
+  const loginChk = document.getElementById('emp-create-login');
+  const loginSection = document.getElementById('emp-login-section');
+  const loginFields = document.getElementById('emp-login-fields');
+  if (loginChk) loginChk.checked = false;
+  if (loginFields) loginFields.style.display = 'none';
+  setVal('emp-login-email', '');
+  setVal('emp-login-password', '');
+  setVal('emp-login-role', 'cashier');
+
   if (id) {
     const e = _hrEmployeesCache.find(x => x.id == id);
     if (e) {
@@ -3769,12 +3823,21 @@ function openEmployeeModal(id = null) {
       setVal('emp-salary', e.salary);
       setVal('emp-phone', e.phone);
       setVal('emp-email', e.email);
+      // Hide login section when editing existing employee
+      if (loginSection) loginSection.style.display = 'none';
     }
   } else {
     if (titleEl) titleEl.textContent = 'Add New Employee';
+    if (loginSection) loginSection.style.display = '';
   }
 
   document.getElementById('employee-modal')?.classList.remove('hidden');
+}
+
+function toggleEmpLoginFields() {
+  const checked = document.getElementById('emp-create-login')?.checked;
+  const fields = document.getElementById('emp-login-fields');
+  if (fields) fields.style.display = checked ? 'flex' : 'none';
 }
 
 async function submitEmployeeModal() {
@@ -3799,6 +3862,47 @@ async function submitEmployeeModal() {
       }).then(r => r.json());
     } else {
       res = await apiPost('/api/hr/employees', { name, role, branch_id, salary, phone, email, hire_date: new Date().toISOString().slice(0,10) });
+
+      // If HR is provisioning a login account for this new employee
+      const createLogin = document.getElementById('emp-create-login')?.checked;
+      if (createLogin && res.success) {
+        const loginEmail    = document.getElementById('emp-login-email')?.value.trim();
+        const loginPassword = document.getElementById('emp-login-password')?.value.trim();
+        const loginRole     = document.getElementById('emp-login-role')?.value || 'cashier';
+
+        if (!loginEmail || !loginPassword) {
+          showToast('Login email and password are required to create an account.');
+          return;
+        }
+        if (loginPassword.length < 6) {
+          showToast('Password must be at least 6 characters.');
+          return;
+        }
+
+        const accountRes = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (state.token || '')
+          },
+          body: JSON.stringify({
+            name,
+            email: loginEmail,
+            password: loginPassword,
+            role: loginRole,
+            branch_id
+          })
+        }).then(r => r.json());
+
+        if (accountRes.success) {
+          showToast(`Employee ${name} added with login account (${loginEmail})`);
+        } else {
+          showToast(`Employee saved, but account creation failed: ${accountRes.error || 'Unknown error'}`);
+        }
+        closeModal('employee-modal');
+        loadHR();
+        return;
+      }
     }
 
     if (res.success) {
@@ -3809,6 +3913,7 @@ async function submitEmployeeModal() {
       showToast(res.error || 'Failed to save employee');
     }
   } catch (e) {
+    console.error('[submitEmployeeModal]', e);
     showToast('Error saving employee');
   }
 }
@@ -4553,8 +4658,26 @@ function openBranchModal() {
   document.getElementById('branch-modal')?.classList.remove('hidden');
 }
 
-function selectBranch(branchName) {
-  document.getElementById('branch-name').textContent = branchName;
+function openBranchModal() {
+  // Only owners can switch branches
+  if (state.user && state.user.role !== 'owner') {
+    showToast('Branch locked to your assigned work location');
+    return;
+  }
+  document.getElementById('branch-modal')?.classList.remove('hidden');
+}
+
+function selectBranch(branchName, branchId = null) {
+  // Non-owners cannot switch branches
+  if (state.user && state.user.role !== 'owner') {
+    showToast('Branch locked to your assigned work location');
+    return;
+  }
+  state.currentBranch = { name: branchName, id: branchId };
+  const el = document.getElementById('branch-name');
+  if (el) el.textContent = branchName;
+  const statusEl = document.querySelector('.branch-status');
+  if (statusEl) statusEl.textContent = 'Online · All Access';
   closeModal('branch-modal');
   showToast(`Switched active branch to ${branchName}`);
 }
