@@ -3819,8 +3819,15 @@ function openEmployeeModal(id = null) {
       setVal('emp-salary', e.salary);
       setVal('emp-phone', e.phone);
       setVal('emp-email', e.email);
-      // Hide login section when editing existing employee
-      if (loginSection) loginSection.style.display = 'none';
+
+      // Keep login section available when editing
+      if (loginSection) loginSection.style.display = '';
+      setVal('emp-login-email', e.email || '');
+
+      const normRole = (e.role || '').toLowerCase().includes('manager') ? 'manager' :
+                       (e.role || '').toLowerCase().includes('hr') ? 'hr' :
+                       (e.role || '').toLowerCase().includes('account') ? 'accountant' : 'cashier';
+      setVal('emp-login-role', normRole);
     }
   } else {
     if (titleEl) titleEl.textContent = 'Add New Employee';
@@ -3858,24 +3865,17 @@ async function submitEmployeeModal() {
       }).then(r => r.json());
     } else {
       res = await apiPost('/api/hr/employees', { name, role, branch_id, salary, phone, email, hire_date: new Date().toISOString().slice(0,10) });
+    }
 
-      // If HR is provisioning a login account for this new employee
-      const createLogin = document.getElementById('emp-create-login')?.checked;
-      if (createLogin && res.success) {
-        const loginEmail    = document.getElementById('emp-login-email')?.value.trim();
-        const loginPassword = document.getElementById('emp-login-password')?.value.trim();
-        const loginRole     = document.getElementById('emp-login-role')?.value || 'cashier';
+    // Process system login account creation / update
+    const createLogin   = document.getElementById('emp-create-login')?.checked;
+    const loginEmail    = document.getElementById('emp-login-email')?.value.trim();
+    const loginPassword = document.getElementById('emp-login-password')?.value.trim();
+    const loginRole     = document.getElementById('emp-login-role')?.value || 'cashier';
 
-        if (!loginEmail || !loginPassword) {
-          showToast('Login email and password are required to create an account.');
-          return;
-        }
-        if (loginPassword.length < 6) {
-          showToast('Password must be at least 6 characters.');
-          return;
-        }
-
-        const accountRes = await fetch('/api/auth/register', {
+    if (res.success && (createLogin || (id && loginEmail))) {
+      if (loginEmail) {
+        const accountRes = await fetch('/api/auth/upsert-user', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -3891,9 +3891,9 @@ async function submitEmployeeModal() {
         }).then(r => r.json());
 
         if (accountRes.success) {
-          showToast(`Employee ${name} added with login account (${loginEmail})`);
+          showToast(id ? `Employee profile & login account (${loginEmail}) updated` : `Employee ${name} added with login account (${loginEmail})`);
         } else {
-          showToast(`Employee saved, but account creation failed: ${accountRes.error || 'Unknown error'}`);
+          showToast(`Employee saved, but login account operation failed: ${accountRes.error || 'Unknown error'}`);
         }
         closeModal('employee-modal');
         loadHR();

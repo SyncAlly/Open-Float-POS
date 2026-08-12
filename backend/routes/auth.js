@@ -23,7 +23,10 @@ router.get('/me', requireAuth, ctrl.me);
 // PUT  /api/auth/change-password
 router.put('/change-password', requireAuth, ctrl.changePassword);
 
-// POST /api/auth/register        — owner/manager only
+// POST /api/auth/register        — owner/manager/hr
 router.post('/register', requireAuth, ctrl.register);
+
+// POST /api/auth/upsert-user     — owner/manager/hr (create or update user account)
+router.post('/upsert-user', requireAuth, ctrl.upsertUserAccount);
 
 module.exports = router;

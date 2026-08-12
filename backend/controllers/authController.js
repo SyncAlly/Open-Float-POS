@@ -118,4 +118,52 @@ async function register(req, res) {
   }
 }
 
-module.exports = { login, me, changePassword, register };
+async function upsertUserAccount(req, res) {
+  // Only owner, manager, or HR can manage user accounts
+  if (req.user.role !== 'owner' && req.user.role !== 'manager' && req.user.role !== 'hr') {
+    return res.status(403).json({ error: 'Only owners, managers, or HR officers can manage user accounts.' });
+  }
+  try {
+    const { name, email, password, role, branch_id } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email required.' });
+
+    const db = await getDb();
+    const existing = query(db, 'SELECT id, password_hash FROM users WHERE LOWER(email) = ?', [email.toLowerCase()]);
+
+    if (existing.length) {
+      // Update existing user login account
+      const updates = [];
+      const params = [];
+
+      if (name) { updates.push('name = ?'); params.push(name); }
+      if (role) { updates.push('role = ?'); params.push(role); }
+      if (branch_id !== undefined) { updates.push('branch_id = ?'); params.push(branch_id); }
+      if (password && password.trim().length >= 6) {
+        const hash = await bcrypt.hash(password.trim(), 10);
+        updates.push('password_hash = ?');
+        params.push(hash);
+      }
+
+      if (updates.length > 0) {
+        params.push(email.toLowerCase());
+        exec(db, `UPDATE users SET ${updates.join(', ')} WHERE LOWER(email) = ?`, params);
+      }
+      return res.json({ success: true, message: 'User login account updated.', action: 'updated' });
+    } else {
+      // Create new user login account
+      if (!password || password.trim().length < 6) {
+        return res.status(400).json({ error: 'Initial password (min. 6 characters) required to create login account.' });
+      }
+      const hash = await bcrypt.hash(password.trim(), 10);
+      const result = exec(db,
+        'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
+        [name || 'Employee', email.toLowerCase(), hash, role || 'cashier', branch_id || null]);
+
+      return res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'User login account created.', action: 'created' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { login, me, changePassword, register, upsertUserAccount };

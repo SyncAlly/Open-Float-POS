@@ -2039,20 +2039,20 @@
         <div id="emp-login-section" style="border:1.5px dashed var(--border);border-radius:10px;padding:12px 14px;background:var(--surface-alt, var(--surface));">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:700;color:var(--text-primary);">
             <input type="checkbox" id="emp-create-login" onchange="toggleEmpLoginFields()" style="width:15px;height:15px;cursor:pointer;" />
-            Create System Login Account for this Employee
+            <span id="emp-login-label-text">Create / Update System Login Account for this Employee</span>
           </label>
-          <div id="emp-login-fields" style="display:none;margin-top:12px;display:none;flex-direction:column;gap:10px;">
-            <div style="font-size:11px;color:var(--text-muted);padding:6px 10px;background:rgba(var(--brand-rgb,99,102,241),0.08);border-radius:6px;line-height:1.5;">
-              The employee will use these credentials to sign in. Their session will be automatically locked to their assigned branch.
+          <div id="emp-login-fields" style="display:none;margin-top:12px;flex-direction:column;gap:10px;">
+            <div style="font-size:11px;color:var(--text-muted);padding:6px 10px;background:rgba(234,88,12,0.08);border-radius:6px;line-height:1.5;">
+              The employee will use these credentials to sign in. Their session will automatically lock to their assigned work branch.
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
               <div>
                 <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Login Email *</label>
-                <input type="email" class="form-field-input" id="emp-login-email" placeholder="grace@store.com" style="width:100%;margin-top:4px;" />
+                <input type="email" class="form-field-input" id="emp-login-email" placeholder="staff@store.com" style="width:100%;margin-top:4px;" />
               </div>
               <div>
-                <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Initial Password *</label>
-                <input type="password" class="form-field-input" id="emp-login-password" placeholder="Min. 6 characters" style="width:100%;margin-top:4px;" />
+                <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Password</label>
+                <input type="password" class="form-field-input" id="emp-login-password" placeholder="•••••••• (blank to keep)" style="width:100%;margin-top:4px;" />
               </div>
             </div>
             <div>
