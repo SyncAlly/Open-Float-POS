@@ -11,7 +11,8 @@ const state = {
   sidebarCollapsed: false,
   chartInstances: {},
   heldOrders: [],
-  branchesCache: []
+  branchesCache: [],
+  notifsRead: false
 };
 
 /* AUTHENTICATION HANDLERS */
@@ -602,8 +603,9 @@ async function updateNotificationsUI() {
     listEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12.5px;">No active notifications</div>';
     if (badgeEl) badgeEl.style.display = 'none';
   } else {
+    const isRead = state.notifsRead;
     listEl.innerHTML = notifs.map(n => `
-      <div class="notif-item unread">
+      <div class="notif-item ${isRead ? '' : 'unread'}">
         <div class="notif-dot ${n.type}"></div>
         <div>
           <p>${n.text}</p>
@@ -611,19 +613,36 @@ async function updateNotificationsUI() {
         </div>
       </div>
     `).join('');
+
     if (badgeEl) {
-      badgeEl.style.display = '';
-      badgeEl.textContent = notifs.length;
+      if (isRead) {
+        badgeEl.style.display = 'none';
+      } else {
+        badgeEl.style.display = '';
+        badgeEl.textContent = notifs.length;
+      }
     }
   }
 }
 
 function markAllRead() {
+  state.notifsRead = true;
   document.querySelectorAll('.notif-item.unread').forEach(i => i.classList.remove('unread'));
   const badgeEl = document.querySelector('.notif-badge');
   if (badgeEl) badgeEl.style.display = 'none';
   showToast('All notifications marked as read');
 }
+
+// Close notification panel when clicking outside
+document.addEventListener('click', (e) => {
+  const notifWrap = document.querySelector('.notif-wrap');
+  const notifPanel = document.getElementById('notif-panel');
+  if (notifPanel && notifPanel.classList.contains('open')) {
+    if (notifWrap && !notifWrap.contains(e.target)) {
+      notifPanel.classList.remove('open');
+    }
+  }
+});
 
 /* POS TERMINAL FUNCTIONS */
 let currentCategory = 'all';
