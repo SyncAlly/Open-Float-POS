@@ -690,21 +690,24 @@ async function loadCustomers() {
 
 async function loadDashboardKPIs() {
   try {
-    const [overviewRes, inventoryRes, txsRes, hrRes, prRes] = await Promise.allSettled([
+    const [overviewRes, inventoryRes, txsRes, hrRes, prRes, branchesRes] = await Promise.allSettled([
       apiGet('/api/accounting/overview'),
       apiGet('/api/inventory'),
       apiGet('/api/sales/transactions?limit=1000'),
       apiGet('/api/hr/employees'),
-      apiGet('/api/procurement/requests')
+      apiGet('/api/procurement/requests'),
+      apiGet('/api/branches')
     ]);
 
-    const overview = overviewRes.status === 'fulfilled' ? (overviewRes.value.data || {}) : {};
-    const products = inventoryRes.status === 'fulfilled' ? (inventoryRes.value.data || []) : [];
-    const txs = txsRes.status === 'fulfilled' ? (txsRes.value.data || []) : [];
-    const employees = hrRes.status === 'fulfilled' ? (hrRes.value.data || []) : [];
-    const prs = prRes.status === 'fulfilled' ? (prRes.value.data || []) : [];
+    const overview  = overviewRes.status  === 'fulfilled' ? (overviewRes.value.data  || {}) : {};
+    const products  = inventoryRes.status === 'fulfilled' ? (inventoryRes.value.data || []) : [];
+    const txs       = txsRes.status       === 'fulfilled' ? (txsRes.value.data       || []) : [];
+    const employees = hrRes.status        === 'fulfilled' ? (hrRes.value.data        || []) : [];
+    const prs       = prRes.status        === 'fulfilled' ? (prRes.value.data        || []) : [];
+    const branches  = branchesRes.status  === 'fulfilled' ? (branchesRes.value.data  || []) : [];
 
     state.dashboardTxs = txs; // Cache transactions for period chart updating
+    state.branchesCache = branches;
 
     const setKPI = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
@@ -721,16 +724,20 @@ async function loadDashboardKPIs() {
 
     // 2. Metric Chips
     const cashTotal = txs.filter(t => t.payment_method === 'cash').reduce((sum, t) => sum + (t.total || 0), 0);
+    const bankTotal = txs.filter(t => t.payment_method === 'card' || t.payment_method === 'bank').reduce((sum, t) => sum + (t.total || 0), 0);
     const mpesaTotal = txs.filter(t => t.payment_method === 'mpesa').reduce((sum, t) => sum + (t.total || 0), 0);
     const invValue = overview.inventory_cogs_value || products.reduce((sum, p) => sum + ((p.stock_qty || p.stock || 0) * (p.buy_price || p.price || 0)), 0);
     const presentStaff = employees.filter(e => e.status === 'present').length;
     const totalStaff = employees.length || 0;
 
+    const activeBranchesCount = branches.filter(b => b.is_active !== 0).length || 1;
+    const totalBranchesCount  = branches.length || 1;
+
     setKPI('chip-cash', 'KES ' + fmt(Math.round(cashTotal)));
-    setKPI('chip-bank', 'KES 0');
+    setKPI('chip-bank', 'KES ' + fmt(Math.round(bankTotal)));
     setKPI('chip-mpesa', 'KES ' + fmt(Math.round(mpesaTotal)));
     setKPI('chip-inv-val', 'KES ' + fmt(Math.round(invValue)));
-    setKPI('chip-branches', '1 / 1');
+    setKPI('chip-branches', `${activeBranchesCount} / ${totalBranchesCount}`);
     setKPI('chip-staff', `${presentStaff} / ${totalStaff}`);
 
     // 3. Payment Donut Chart & Legend
@@ -834,43 +841,60 @@ async function loadDashboardKPIs() {
       }
     }
 
-    // 6. Branch Performance List (real data only)
+    // 6. Branch Performance List (Includes all registered system branches)
     const branchListEl = document.getElementById('dash-branch-list');
     if (branchListEl) {
-      // Group transactions by branch
-      const branchMap = {};
+      // Group transactions by branch ID and branch name
+      const salesByBranchId = {};
+      const salesByBranchName = {};
       txs.forEach(t => {
-        const bname = t.branch_name || 'Main Branch / HQ';
-        branchMap[bname] = (branchMap[bname] || 0) + (t.total || 0);
+        if (t.branch_id) {
+          salesByBranchId[t.branch_id] = (salesByBranchId[t.branch_id] || 0) + (t.total || 0);
+        }
+        const bname = t.branch_name || 'Main Branch';
+        salesByBranchName[bname.toLowerCase()] = (salesByBranchName[bname.toLowerCase()] || 0) + (t.total || 0);
       });
-      const branchEntries = Object.entries(branchMap).sort((a, b) => b[1] - a[1]);
-      const rankClasses = ['gold', 'silver', 'bronze', ''];
-      const maxRev = branchEntries.length > 0 ? branchEntries[0][1] : 1;
 
-      if (branchEntries.length === 0) {
-        branchListEl.innerHTML = `
+      // Build branch performance entries starting with all system branches
+      let branchList = branches.map(b => {
+        const rev = salesByBranchId[b.id] !== undefined ? salesByBranchId[b.id] : (salesByBranchName[(b.name || '').toLowerCase()] || 0);
+        return {
+          id: b.id,
+          name: b.name || 'Branch ' + b.id,
+          revenue: rev,
+          status: b.is_active !== 0 ? 'Active' : 'Inactive'
+        };
+      });
+
+      // Fallback if no branches array returned
+      if (branchList.length === 0) {
+        branchList = [{ id: 1, name: 'Main Branch', revenue: totalRev, status: 'Active' }];
+      }
+
+      // Sort by revenue descending
+      branchList.sort((a, b) => b.revenue - a.revenue);
+      const rankClasses = ['gold', 'silver', 'bronze', ''];
+      const maxRev = branchList[0]?.revenue || 1;
+
+      branchListEl.innerHTML = branchList.map((b, i) => {
+        const pct = maxRev > 0 ? Math.round((b.revenue / maxRev) * 100) : 0;
+        const statusBadge = b.status === 'Inactive'
+          ? '<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:var(--red-light);color:var(--red);margin-left:6px;font-weight:600;">Inactive</span>'
+          : '';
+
+        return `
           <div class="branch-row">
-            <div class="branch-rank gold">1</div>
-            <div class="branch-details">
-              <span>Main Branch / HQ</span>
-              <div class="branch-bar-wrap"><div class="branch-bar" style="width:0%"></div></div>
-            </div>
-            <div class="branch-rev">KES 0</div>
-          </div>
-        `;
-      } else {
-        branchListEl.innerHTML = branchEntries.map(([name, rev], i) => {
-          const pct = Math.round((rev / maxRev) * 100);
-          return `<div class="branch-row">
             <div class="branch-rank ${rankClasses[i] || ''}">${i + 1}</div>
             <div class="branch-details">
-              <span>${name}</span>
-              <div class="branch-bar-wrap"><div class="branch-bar" style="width:${pct}%"></div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span>${b.name}${statusBadge}</span>
+                <span class="branch-rev" style="font-size:11.5px;font-weight:700;">KES ${fmt(Math.round(b.revenue))}</span>
+              </div>
+              <div class="branch-bar-wrap" style="margin-top:4px;"><div class="branch-bar" style="width:${pct}%"></div></div>
             </div>
-            <div class="branch-rev">KES ${fmt(Math.round(rev))}</div>
-          </div>`;
-        }).join('');
-      }
+          </div>
+        `;
+      }).join('');
     }
 
     // 7. Recent Transactions List
