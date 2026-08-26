@@ -63,25 +63,38 @@ async function getOrCreateCategoryId(db, catId, catName) {
   return null;
 }
 
+function normalizeImageUrl(url) {
+  if (!url || typeof url !== 'string') return url || null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  // Convert Google Drive share links (e.g. drive.google.com/file/d/ID/view...) to direct CDN image URLs
+  const driveMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (driveMatch && driveMatch[1]) {
+    return 'https://lh3.googleusercontent.com/d/' + driveMatch[1];
+  }
+  return trimmed;
+}
+
 async function createProduct(req, res) {
   try {
     const db = await getDb();
     const { name, sku, category_id, category_name, new_category, buy_price, sell_price, stock_qty,
-            reorder_level, unit, supplier_id, expiry_date, branch_id } = req.body;
+            reorder_level, unit, supplier_id, expiry_date, branch_id, image_url } = req.body;
 
     if (!name || !sku || sell_price == null) {
       return res.status(400).json({ error: 'name, sku, and sell_price are required.' });
     }
 
     const resolvedCatId = await getOrCreateCategoryId(db, category_id, new_category || category_name);
+    const resolvedImageUrl = normalizeImageUrl(image_url);
 
     const result = exec(db,
       `INSERT INTO products (name, sku, category_id, buy_price, sell_price, stock_qty,
-        reorder_level, unit, supplier_id, expiry_date, branch_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        reorder_level, unit, supplier_id, expiry_date, branch_id, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [name, sku, resolvedCatId, buy_price || 0, sell_price,
        stock_qty || 0, reorder_level || 10, unit || 'pcs',
-       supplier_id || null, expiry_date || null, branch_id || null]);
+       supplier_id || null, expiry_date || null, branch_id || null, resolvedImageUrl]);
 
     res.status(201).json({ success: true, id: result.lastInsertRowid, category_id: resolvedCatId, message: 'Product created.' });
   } catch (err) {
@@ -101,8 +114,12 @@ async function updateProduct(req, res) {
       delete fields.category_name;
     }
 
+    if (fields.image_url !== undefined) {
+      fields.image_url = normalizeImageUrl(fields.image_url);
+    }
+
     const allowed = ['name','sku','category_id','buy_price','sell_price','stock_qty',
-                     'reorder_level','unit','supplier_id','expiry_date','is_active'];
+                     'reorder_level','unit','supplier_id','expiry_date','is_active','image_url'];
     const sets = Object.keys(fields).filter(k => allowed.includes(k));
 
     if (!sets.length) return res.status(400).json({ error: 'No valid fields to update.' });

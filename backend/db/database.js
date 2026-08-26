@@ -106,6 +106,7 @@ function createTables() {
       unit          TEXT DEFAULT 'pcs',
       supplier_id   INTEGER,
       expiry_date   TEXT,
+      image_url     TEXT,
       is_active     INTEGER DEFAULT 1,
       branch_id     INTEGER,
       created_at    TEXT DEFAULT (datetime('now')),
@@ -296,6 +297,13 @@ function createTables() {
       created_at    TEXT DEFAULT (datetime('now'))
     );
   `);
+  // Ensure image_url column exists for existing databases
+  try {
+    _db.run("ALTER TABLE products ADD COLUMN image_url TEXT");
+    persist();
+  } catch (e) {
+    // Column already exists
+  }
   console.log('[DB] Tables ready.');
 }
 

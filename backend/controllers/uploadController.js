@@ -1,6 +1,17 @@
 /** Batch Upload Controller — Products & Services batch CSV upload */
 const { getDb, exec, query } = require('../db/database');
 
+function normalizeImageUrl(url) {
+  if (!url || typeof url !== 'string') return url || null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const driveMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (driveMatch && driveMatch[1]) {
+    return 'https://lh3.googleusercontent.com/d/' + driveMatch[1];
+  }
+  return trimmed;
+}
+
 async function uploadBatch(req, res) {
   try {
     const db = await getDb();
@@ -51,10 +62,12 @@ async function uploadBatch(req, res) {
             }
           }
 
+          const rawImg = item.image_url || item.image || item.img || null;
+          const imageUrl = normalizeImageUrl(rawImg);
           exec(db,
-            `INSERT INTO products (name, sku, category_id, buy_price, sell_price, stock_qty, reorder_level, unit, supplier_id, expiry_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [item.name || 'Unnamed Item', sku, categoryId, parseFloat(item.buy_price) || 0, parseFloat(item.sell_price) || 0, parseInt(item.stock_qty) || 0, parseInt(item.reorder_level) || 10, item.unit || 'pcs', item.supplier_id || null, item.expiry_date || null]
+            `INSERT INTO products (name, sku, category_id, buy_price, sell_price, stock_qty, reorder_level, unit, supplier_id, expiry_date, image_url)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [item.name || 'Unnamed Item', sku, categoryId, parseFloat(item.buy_price) || 0, parseFloat(item.sell_price) || 0, parseInt(item.stock_qty) || 0, parseInt(item.reorder_level) || 10, item.unit || 'pcs', item.supplier_id || null, item.expiry_date || null, imageUrl]
           );
           inserted++;
         } catch (e) {

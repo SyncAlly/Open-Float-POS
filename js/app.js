@@ -700,6 +700,50 @@ function onProductCategoryChange(val) {
   }
 }
 
+function onProductImageUrlChange(val) {
+  const preview = document.getElementById('prod-img-preview');
+  const placeholder = document.getElementById('prod-img-placeholder');
+  const clearBtn = document.getElementById('prod-img-clear-btn');
+  let url = (val || '').trim();
+
+  // Auto-convert Google Drive share links to direct CDN preview URL
+  const driveMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (driveMatch && driveMatch[1]) {
+    url = 'https://lh3.googleusercontent.com/d/' + driveMatch[1];
+  }
+
+  if (url) {
+    if (preview) { preview.src = url; preview.classList.remove('hidden'); }
+    if (placeholder) placeholder.classList.add('hidden');
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+  } else {
+    if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+    if (placeholder) placeholder.classList.remove('hidden');
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
+function handleProductImageUpload(input) {
+  if (!input || !input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    const urlInput = document.getElementById('prod-image-url');
+    if (urlInput) urlInput.value = dataUrl;
+    onProductImageUrlChange(dataUrl);
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearProductImage() {
+  const urlInput = document.getElementById('prod-image-url');
+  const fileInput = document.getElementById('prod-image-file');
+  if (urlInput) urlInput.value = '';
+  if (fileInput) fileInput.value = '';
+  onProductImageUrlChange('');
+}
+
 /* ── LOAD FUNCTIONS (Phase 1: live data) ──────────────────────── */
 async function loadPOSProducts() {
   const grid = document.getElementById('products-grid');
@@ -725,6 +769,7 @@ async function loadPOSProducts() {
         sku: p.sku,
         name: p.name,
         price: p.sell_price,
+        image_url: p.image_url || null,
         cat: catName,
         cat_slug: catSlug,
         stock: p.stock_qty,
@@ -1142,7 +1187,12 @@ function renderInventoryRows(items) {
     const badgeClass = stockStatus === 'ok' ? 'badge-green' : stockStatus === 'low' ? 'badge-amber' : 'badge-red';
     return `<tr>
       <td><input type="checkbox" /></td>
-      <td><strong>${item.name}</strong></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${item.image_url ? `<img src="${item.image_url}" alt="" referrerpolicy="no-referrer" loading="lazy" style="width:28px;height:28px;border-radius:4px;object-fit:cover;border:1px solid var(--border);" onerror="this.style.display='none'" />` : `<div style="width:28px;height:28px;border-radius:4px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-muted);font-weight:600;flex-shrink:0;">${(item.name || 'P')[0].toUpperCase()}</div>`}
+          <span><strong>${item.name}</strong></span>
+        </div>
+      </td>
       <td class="mono">${item.sku}</td>
       <td>${item.category_name || '—'}</td>
       <td><strong>${item.stock_qty}</strong></td>
@@ -2200,6 +2250,7 @@ async function openProductModal(id = null) {
   setVal('prod-new-cat-name', '');
   const newCatWrap = document.getElementById('prod-new-cat-wrap');
   if (newCatWrap) newCatWrap.classList.add('hidden');
+  clearProductImage();
   setVal('prod-buy-price', '');
   setVal('prod-sell-price', '');
   setVal('prod-stock', '');
@@ -2218,6 +2269,8 @@ async function openProductModal(id = null) {
         setVal('prod-name', p.name || '');
         setVal('prod-sku', p.sku || '');
         setVal('prod-cat-id', p.category_id ? String(p.category_id) : (_categoriesCache.length ? String(_categoriesCache[0].id) : ''));
+        setVal('prod-image-url', p.image_url || '');
+        onProductImageUrlChange(p.image_url || '');
         setVal('prod-buy-price', p.buy_price || '');
         setVal('prod-sell-price', p.sell_price || '');
         setVal('prod-stock', p.stock_qty || '0');
@@ -2242,6 +2295,7 @@ async function submitProductModal() {
   const sku = document.getElementById('prod-sku').value.trim();
   const catSelectVal = document.getElementById('prod-cat-id').value;
   const newCatName = (document.getElementById('prod-new-cat-name')?.value || '').trim();
+  const image_url = document.getElementById('prod-image-url')?.value.trim() || null;
   const buy_price = parseFloat(document.getElementById('prod-buy-price').value) || 0;
   const sell_price = parseFloat(document.getElementById('prod-sell-price').value);
   const stock_qty = parseInt(document.getElementById('prod-stock').value) || 0;
@@ -2267,7 +2321,7 @@ async function submitProductModal() {
   }
 
   const payload = {
-    name, sku, category_id, new_category, buy_price, sell_price, stock_qty, unit, reorder_level, expiry_date
+    name, sku, category_id, new_category, image_url, buy_price, sell_price, stock_qty, unit, reorder_level, expiry_date
   };
 
   try {
@@ -2482,9 +2536,11 @@ function renderProducts(cat = 'all') {
     const badgeText = p.is_service ? 'Billable Service' : (p.stock > 0 ? p.stock + ' in stock' : 'Out of stock');
     const badgeClass = p.is_service ? 'ok' : (p.status === 'ok' ? 'ok' : 'low');
     const pidStr = typeof p.id === 'string' ? `'${p.id}'` : p.id;
+    const imgHtml = p.image_url ? `<div class="product-img-wrap"><img src="${p.image_url}" alt="${p.name}" class="product-img" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>` : '';
 
     return `
       <div class="product-card ${!p.is_service && p.stock === 0 ? 'out-of-stock' : ''}" onclick="addToCart(${pidStr})">
+        ${imgHtml}
         <span class="product-code">${p.sku}</span>
         <div class="product-title">${p.name}</div>
         <div class="product-cost">KES ${fmt(p.price)}</div>
@@ -5249,53 +5305,99 @@ function handleFileSelect(input) {
   }
 }
 
+function parseCSVText(text) {
+  const cleanText = text.replace(/^\uFEFF/, '').trim();
+  const rows = [];
+  let currentRow = [];
+  let currentVal = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const char = cleanText[i];
+    const nextChar = cleanText[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentVal += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      currentRow.push(currentVal.trim());
+      currentVal = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      currentRow.push(currentVal.trim());
+      if (currentRow.some(c => c !== '')) rows.push(currentRow);
+      currentRow = [];
+      currentVal = '';
+    } else {
+      currentVal += char;
+    }
+  }
+  if (currentVal || currentRow.length) {
+    currentRow.push(currentVal.trim());
+    if (currentRow.some(c => c !== '')) rows.push(currentRow);
+  }
+  return rows;
+}
+
 async function processUploadBatch() {
   const store = document.getElementById('upload-store-select')?.value || 'Nairobi Main';
   const type = document.getElementById('upload-type-select')?.value || 'products';
   const fileInput = document.getElementById('upload-file-input');
 
   if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-    // Demo fallback payload if no file selected
-    const demoItems = type === 'services'
-      ? [{ code: 'SRV-006', name: 'Car Wash & Detailing', category: 'Automotive', price: 1200, unit: 'Per Vehicle' }]
-      : [{ name: 'Engine Oil 4L', sku: 'OIL-4L', buy_price: 1800, sell_price: 2500, stock_qty: 30, unit: 'pcs' }];
-
-    try {
-      const res = await apiPost('/api/upload', { upload_type: type, store_warehouse: store, items: demoItems });
-      showToast(res.message || `Successfully imported batch for ${store}`);
-      if (type === 'services') loadServices(); else loadInventory();
-    } catch (e) {
-      showToast(`Batch upload completed for ${store}`);
-      if (type === 'services') loadServices(); else loadInventory();
-    }
-    closeModal('upload-modal');
+    showToast('Please select a CSV file to upload.');
     return;
   }
 
   const file = fileInput.files[0];
   const reader = new FileReader();
   reader.onload = async (e) => {
-    const text = e.target.result;
-    const lines = text.split('\n').filter(l => l.trim());
-    if (lines.length <= 1) { alert('CSV file is empty or invalid header'); return; }
-
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const items = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const vals = lines[i].split(',').map(v => v.trim());
-      if (vals.length < 2) continue;
-      const obj = {};
-      headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
-      items.push(obj);
-    }
-
     try {
+      const text = e.target.result;
+      const rawRows = parseCSVText(text);
+      if (rawRows.length < 2) {
+        showToast('CSV file is empty or missing data rows.');
+        return;
+      }
+
+      const headers = rawRows[0].map(h => h.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+      const items = [];
+
+      for (let i = 1; i < rawRows.length; i++) {
+        const row = rawRows[i];
+        if (!row.length || (row.length === 1 && !row[0])) continue;
+        const obj = {};
+        headers.forEach((h, idx) => {
+          obj[h] = row[idx] !== undefined ? row[idx] : '';
+        });
+        items.push(obj);
+      }
+
+      if (!items.length) {
+        showToast('No valid product rows found in CSV.');
+        return;
+      }
+
       const res = await apiPost('/api/upload', { upload_type: type, store_warehouse: store, items });
-      showToast(res.message || `Imported ${items.length} records!`);
-      if (type === 'services') loadServices(); else loadInventory();
+      if (res && res.success) {
+        showToast(res.message || `Successfully imported ${res.inserted || items.length} records!`);
+        if (type === 'services') {
+          loadServices();
+        } else {
+          await loadCategories();
+          await loadInventory();
+          await loadPOSProducts();
+        }
+      } else {
+        showToast(res.error || 'Batch upload failed. Check CSV format.');
+      }
     } catch (err) {
-      showToast('Batch upload completed');
+      console.error('[processUploadBatch] Error:', err);
+      showToast(err.message || 'Error processing batch upload.');
     }
     closeModal('upload-modal');
   };
@@ -5307,7 +5409,7 @@ function downloadCSVTemplate(type = 'products') {
   if (type === 'services') {
     csvContent = 'code,name,category,price,unit,vat_applicable\nSRV-101,Sample Service,Maintenance,1500,Per Hour,1\n';
   } else {
-    csvContent = 'name,sku,category,buy_price,sell_price,stock_qty,reorder_level,unit\nSample Product,PRD-101,Beverages,500,800,50,10,pcs\n';
+    csvContent = 'name,sku,category,buy_price,sell_price,stock_qty,reorder_level,unit,image_url\nSample Product,PRD-101,Beverages,500,800,50,10,pcs,https://images.unsplash.com/photo-1544816155-12df9643f363?w=200\n';
   }
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -5319,6 +5421,48 @@ function downloadCSVTemplate(type = 'products') {
   link.click();
   document.body.removeChild(link);
   showToast(`Downloaded ${type} CSV template`);
+}
+
+async function exportInventoryCSV() {
+  try {
+    const res = await apiGet('/api/inventory');
+    const products = (res && res.data) ? res.data : [];
+    if (!products.length) {
+      showToast('No inventory products to export');
+      return;
+    }
+
+    const headers = ['name', 'sku', 'category', 'buy_price', 'sell_price', 'stock_qty', 'reorder_level', 'unit', 'expiry_date', 'image_url'];
+    const rows = products.map(p => {
+      return [
+        `"${(p.name || '').replace(/"/g, '""')}"`,
+        `"${(p.sku || '').replace(/"/g, '""')}"`,
+        `"${(p.category_name || '').replace(/"/g, '""')}"`,
+        p.buy_price || 0,
+        p.sell_price || 0,
+        p.stock_qty || 0,
+        p.reorder_level || 10,
+        `"${(p.unit || 'pcs').replace(/"/g, '""')}"`,
+        p.expiry_date || '',
+        `"${(p.image_url || '').replace(/"/g, '""')}"`
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `openfloat_inventory_export_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Exported ${products.length} products to CSV`);
+  } catch (err) {
+    console.error('[exportInventoryCSV] error:', err);
+    showToast('Failed to export inventory CSV');
+  }
 }
 
 /* STOCK MOVEMENT HANDLERS — duplicate stubs removed; see openStockMovementModal() and submitStockMovementModal() above */
