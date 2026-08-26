@@ -2896,6 +2896,86 @@ function closeModal(id) {
 }
 
 
+let _activeNumpadTarget = null;
+let _activeNumpadLabel = 'Cash Tendered';
+
+function setActiveNumpadTarget(el, label = 'Input') {
+  _activeNumpadTarget = el;
+  _activeNumpadLabel = label;
+  updateNumpadDisplay();
+}
+
+function getActiveNumpadInput() {
+  if (_activeNumpadTarget && document.body.contains(_activeNumpadTarget) && _activeNumpadTarget.offsetParent !== null) {
+    return _activeNumpadTarget;
+  }
+  const method = state.selectedPayMethod || 'cash';
+  if (method === 'cash') {
+    _activeNumpadLabel = 'Cash Tendered';
+    return document.getElementById('tendered-amount');
+  }
+  if (method === 'mpesa') {
+    _activeNumpadLabel = 'M-Pesa Phone';
+    return document.getElementById('mpesa-phone');
+  }
+  if (method === 'split') {
+    _activeNumpadLabel = 'Split Cash';
+    return document.getElementById('split-cash') || document.getElementById('split-mpesa');
+  }
+  if (method === 'card') {
+    _activeNumpadLabel = 'Card Reference';
+    return document.getElementById('card-ref') || document.querySelector('#pay-form-card input');
+  }
+  return document.getElementById('tendered-amount');
+}
+
+function updateNumpadDisplay() {
+  const display = document.getElementById('numpad-display');
+  const labelEl = document.getElementById('numpad-target-label');
+  const input = getActiveNumpadInput();
+  if (labelEl) labelEl.textContent = _activeNumpadLabel || 'Payment Input';
+  if (display) {
+    display.textContent = (input && input.value !== undefined && input.value !== '') ? input.value : '0';
+  }
+}
+
+function numpadPress(key) {
+  const input = getActiveNumpadInput();
+  if (!input) return;
+
+  const currentVal = input.value || '';
+  if (key === '.') {
+    if (currentVal.includes('.')) return;
+    input.value = currentVal === '' ? '0.' : currentVal + '.';
+  } else {
+    if (currentVal === '0' && key !== '.') {
+      input.value = key;
+    } else {
+      input.value = currentVal + key;
+    }
+  }
+
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  updateNumpadDisplay();
+}
+
+function numpadBackspace() {
+  const input = getActiveNumpadInput();
+  if (!input) return;
+  const currentVal = input.value || '';
+  input.value = currentVal.slice(0, -1);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  updateNumpadDisplay();
+}
+
+function numpadClear() {
+  const input = getActiveNumpadInput();
+  if (!input) return;
+  input.value = '';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  updateNumpadDisplay();
+}
+
 function selectPayMethod(method) {
   state.selectedPayMethod = method;
   document.querySelectorAll('.pay-btn').forEach(b => {
@@ -2905,6 +2985,13 @@ function selectPayMethod(method) {
 
   document.querySelectorAll('.pay-form').forEach(f => f.classList.remove('active'));
   document.getElementById('pay-form-' + method)?.classList.add('active');
+
+  // Update active numpad target based on selected payment method
+  if (method === 'cash') setActiveNumpadTarget(document.getElementById('tendered-amount'), 'Cash Tendered');
+  else if (method === 'mpesa') setActiveNumpadTarget(document.getElementById('mpesa-phone'), 'M-Pesa Phone');
+  else if (method === 'split') setActiveNumpadTarget(document.getElementById('split-cash'), 'Split Cash');
+  else if (method === 'card') setActiveNumpadTarget(document.getElementById('card-ref'), 'Card Reference');
+  updateNumpadDisplay();
 }
 
 function setTender(amt) {
@@ -2913,6 +3000,7 @@ function setTender(amt) {
     const val = (parseFloat(input.value) || 0) + amt;
     input.value = val;
     calcChange();
+    updateNumpadDisplay();
   }
 }
 
@@ -2924,6 +3012,7 @@ function setExact() {
   if (input) {
     input.value = total;
     calcChange();
+    updateNumpadDisplay();
   }
 }
 
