@@ -46,25 +46,44 @@ async function getProduct(req, res) {
   }
 }
 
+async function getOrCreateCategoryId(db, catId, catName) {
+  const name = (catName || '').trim();
+  if (name) {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || ('cat-' + Date.now());
+    const existing = query(db, 'SELECT id FROM categories WHERE LOWER(name) = LOWER(?) OR LOWER(slug) = LOWER(?)', [name, slug]);
+    if (existing && existing.length > 0) {
+      return existing[0].id;
+    }
+    const catRes = exec(db, 'INSERT INTO categories (name, slug) VALUES (?, ?)', [name, slug]);
+    return catRes.lastInsertRowid;
+  }
+  if (catId && catId !== 'NEW_CATEGORY' && !isNaN(parseInt(catId))) {
+    return parseInt(catId);
+  }
+  return null;
+}
+
 async function createProduct(req, res) {
   try {
     const db = await getDb();
-    const { name, sku, category_id, buy_price, sell_price, stock_qty,
+    const { name, sku, category_id, category_name, new_category, buy_price, sell_price, stock_qty,
             reorder_level, unit, supplier_id, expiry_date, branch_id } = req.body;
 
     if (!name || !sku || sell_price == null) {
       return res.status(400).json({ error: 'name, sku, and sell_price are required.' });
     }
 
+    const resolvedCatId = await getOrCreateCategoryId(db, category_id, new_category || category_name);
+
     const result = exec(db,
       `INSERT INTO products (name, sku, category_id, buy_price, sell_price, stock_qty,
         reorder_level, unit, supplier_id, expiry_date, branch_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, sku, category_id || null, buy_price || 0, sell_price,
+      [name, sku, resolvedCatId, buy_price || 0, sell_price,
        stock_qty || 0, reorder_level || 10, unit || 'pcs',
        supplier_id || null, expiry_date || null, branch_id || null]);
 
-    res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'Product created.' });
+    res.status(201).json({ success: true, id: result.lastInsertRowid, category_id: resolvedCatId, message: 'Product created.' });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'SKU already exists.' });
     res.status(500).json({ error: err.message });
@@ -74,7 +93,14 @@ async function createProduct(req, res) {
 async function updateProduct(req, res) {
   try {
     const db = await getDb();
-    const fields = req.body;
+    const fields = { ...req.body };
+
+    if (fields.new_category || fields.category_name) {
+      fields.category_id = await getOrCreateCategoryId(db, fields.category_id, fields.new_category || fields.category_name);
+      delete fields.new_category;
+      delete fields.category_name;
+    }
+
     const allowed = ['name','sku','category_id','buy_price','sell_price','stock_qty',
                      'reorder_level','unit','supplier_id','expiry_date','is_active'];
     const sets = Object.keys(fields).filter(k => allowed.includes(k));
@@ -133,6 +159,28 @@ async function getCategories(req, res) {
   }
 }
 
+async function createCategory(req, res) {
+  try {
+    const db = await getDb();
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Category name is required.' });
+    }
+    const catName = name.trim();
+    const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || ('cat-' + Date.now());
+
+    const existing = query(db, 'SELECT * FROM categories WHERE LOWER(name) = LOWER(?) OR LOWER(slug) = LOWER(?)', [catName, slug]);
+    if (existing && existing.length > 0) {
+      return res.json({ success: true, data: existing[0], message: 'Category already exists.' });
+    }
+
+    const result = exec(db, 'INSERT INTO categories (name, slug) VALUES (?, ?)', [catName, slug]);
+    res.status(201).json({ success: true, data: { id: result.lastInsertRowid, name: catName, slug }, message: 'Category created.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 async function getStockSummary(req, res) {
   try {
     const db = await getDb();
@@ -153,4 +201,5 @@ async function getStockSummary(req, res) {
 }
 
 module.exports = { getProducts, getProduct, createProduct, updateProduct,
-                   adjustStock, deleteProduct, getCategories, getStockSummary };
+                   adjustStock, deleteProduct, getCategories, createCategory, getStockSummary };
+

@@ -192,7 +192,7 @@ Your role is to:
 Always respond in a professional, friendly, and helpful tone.`;
 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-flash-latest',
+      model: 'gemini-3.6-flash',
       systemInstruction: systemPrompt
     });
 
@@ -206,7 +206,7 @@ Always respond in a professional, friendly, and helpful tone.`;
     const result = await chatSession.sendMessage(message.trim());
     const responseText = result.response.text();
 
-    res.json({
+    return res.json({
       reply: responseText,
       context_snapshot: {
         revenue_30d: context.sales_last_30_days?.total_revenue || 0,
@@ -234,7 +234,15 @@ Always respond in a professional, friendly, and helpful tone.`;
       });
     }
 
-    res.status(500).json({
+    // Model overloaded / service unavailable
+    if (err.message.includes('503') || err.message.includes('Service Unavailable') || err.message.includes('high demand') || err.message.includes('overloaded')) {
+      return res.status(503).json({
+        error: 'The AI service is currently experiencing high demand. Please try again in a moment.',
+        code: 'SERVICE_UNAVAILABLE'
+      });
+    }
+
+    return res.status(500).json({
       error: 'AI service temporarily unavailable. Please try again.',
       details: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -256,7 +264,7 @@ async function getInsights(req, res) {
       return res.json({ insights: [] });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
     const prompt = `Based on this business data: ${JSON.stringify(context)}
 
 Generate exactly 5 short, specific business insights as a JSON array. Each insight must have:
@@ -280,11 +288,11 @@ Return ONLY valid JSON array, no markdown, no explanation. Example format:
       insights = [];
     }
 
-    res.json({ insights });
+    return res.json({ insights });
 
   } catch (err) {
     console.error('[AI Insights Error]', err.message);
-    res.json({ insights: [] }); // Graceful fallback — don't break the page
+    return res.json({ insights: [] }); // Graceful fallback — don't break the page
   }
 }
 

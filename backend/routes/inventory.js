@@ -13,6 +13,9 @@ router.get('/summary', requireAuth, ctrl.getStockSummary);
 // GET /api/inventory/categories      — list all categories (all staff)
 router.get('/categories', requireAuth, ctrl.getCategories);
 
+// POST /api/inventory/categories     — create category (manager/owner only)
+router.post('/categories', requireAuth, managerUp, ctrl.createCategory);
+
 // GET /api/inventory                 — list products (all staff)
 router.get('/', requireAuth, ctrl.getProducts);
 

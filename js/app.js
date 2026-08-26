@@ -117,6 +117,7 @@ function completeLogin() {
 
   // Initialize charts and load live data now that the user is authenticated
   initCharts();
+  loadCategories();
   loadPOSProducts();
   loadInventory();
   loadCustomers();
@@ -193,7 +194,7 @@ function applyRolePermissions() {
   const permissions = {
     owner: ['*'],
     manager: ['*'],
-    cashier: ['sales', 'inventory', 'crm', 'services', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
+    cashier: ['sales', 'crm', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
     hr: ['hr'],
     accountant: ['accounting', 'receivables', 'suppliers', 'z-reports', 'procurement']
   };
@@ -486,7 +487,7 @@ function navTo(viewId) {
     const permissions = {
       owner: ['*'],
       manager: ['*'],
-      cashier: ['sales', 'inventory', 'crm', 'services', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
+      cashier: ['sales', 'crm', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
       hr: ['hr'],
       accountant: ['accounting', 'receivables', 'suppliers', 'z-reports', 'procurement']
     };
@@ -514,8 +515,8 @@ function navTo(viewId) {
     if (viewId === 'logistics') loadLogistics();
     if (viewId === 'crm') loadCRM();
     if (viewId === 'dashboard') loadDashboardKPIs();
-    if (viewId === 'inventory') loadInventory().then(d => { _inventoryCache = d || []; });
-    if (viewId === 'sales') loadPOSProducts();
+    if (viewId === 'inventory') { loadCategories(); loadInventory().then(d => { _inventoryCache = d || []; }); }
+    if (viewId === 'sales') { loadCategories(); loadPOSProducts(); }
     if (viewId === 'suppliers') loadSuppliers();
     if (viewId === 'hire-purchase') loadHirePurchase();
     if (viewId === 'receivables') loadReceivables();
@@ -646,24 +647,139 @@ document.addEventListener('click', (e) => {
 
 /* POS TERMINAL FUNCTIONS */
 let currentCategory = 'all';
+let _categoriesCache = [];
+
+async function loadCategories() {
+  try {
+    const res = await apiGet('/api/inventory/categories');
+    _categoriesCache = res.data || [];
+
+    // 1. Populate Inventory filter dropdown
+    const invFilter = document.getElementById('inv-cat-filter');
+    if (invFilter) {
+      const currentVal = invFilter.value;
+      let opts = '<option value="">All Categories</option>';
+      _categoriesCache.forEach(c => {
+        opts += `<option value="${c.name}">${c.name}</option>`;
+      });
+      invFilter.innerHTML = opts;
+      if (currentVal) invFilter.value = currentVal;
+    }
+
+    // 2. Populate Product Add/Edit Modal category dropdown
+    const prodCatSel = document.getElementById('prod-cat-id');
+    if (prodCatSel) {
+      const currentSelected = prodCatSel.value;
+      let opts = '<option value="">Select Category...</option>';
+      _categoriesCache.forEach(c => {
+        opts += `<option value="${c.id}">${c.name}</option>`;
+      });
+      opts += '<option value="NEW_CATEGORY">+ Add New Category...</option>';
+      prodCatSel.innerHTML = opts;
+      if (currentSelected) prodCatSel.value = currentSelected;
+    }
+
+    return _categoriesCache;
+  } catch (e) {
+    console.error('[loadCategories] error:', e);
+    return [];
+  }
+}
+
+function onProductCategoryChange(val) {
+  const newCatWrap = document.getElementById('prod-new-cat-wrap');
+  const newCatInput = document.getElementById('prod-new-cat-name');
+  if (val === 'NEW_CATEGORY') {
+    if (newCatWrap) newCatWrap.classList.remove('hidden');
+    if (newCatInput) {
+      newCatInput.value = '';
+      newCatInput.focus();
+    }
+  } else {
+    if (newCatWrap) newCatWrap.classList.add('hidden');
+  }
+}
 
 /* ── LOAD FUNCTIONS (Phase 1: live data) ──────────────────────── */
 async function loadPOSProducts() {
   const grid = document.getElementById('products-grid');
+  const catTabsContainer = document.getElementById('pos-cat-tabs');
   try {
-    const data = await apiGet('/api/inventory');
-    state.productsCache = (data.data || []).map(p => ({
-      id: p.id,
-      sku: p.sku,
-      name: p.name,
-      price: p.sell_price,
-      cat: (p.category_name || 'general').toLowerCase(),
-      stock: p.stock_qty,
-      status: p.stock_qty === 0 ? 'out' : p.stock_qty <= (p.reorder_level || 10) ? 'low' : 'ok'
+    const [invRes, srvRes, catRes] = await Promise.allSettled([
+      apiGet('/api/inventory'),
+      apiGet('/api/services'),
+      apiGet('/api/inventory/categories')
+    ]);
+
+    const inventory = invRes.status === 'fulfilled' ? (invRes.value.data || []) : [];
+    const services  = srvRes.status === 'fulfilled' ? (srvRes.value.data || []) : [];
+    if (catRes.status === 'fulfilled') {
+      _categoriesCache = catRes.value.data || [];
+    }
+
+    const productItems = inventory.map(p => {
+      const catName = p.category_name || 'General';
+      const catSlug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'general';
+      return {
+        id: p.id,
+        sku: p.sku,
+        name: p.name,
+        price: p.sell_price,
+        cat: catName,
+        cat_slug: catSlug,
+        stock: p.stock_qty,
+        status: p.stock_qty === 0 ? 'out' : p.stock_qty <= (p.reorder_level || 10) ? 'low' : 'ok',
+        is_service: false
+      };
+    });
+
+    const serviceItems = services.filter(s => s.status !== 'inactive' && s.is_active !== 0).map(s => ({
+      id: 'srv_' + s.id,
+      sku: s.code || ('SRV-00' + s.id),
+      name: s.name,
+      price: s.price,
+      cat: 'Services',
+      cat_slug: 'services',
+      stock: 9999, // Billable services do not deplete physical inventory
+      status: 'ok',
+      unit: s.unit || 'service',
+      is_service: true
     }));
-    renderProducts('all');
+
+    state.productsCache = [...productItems, ...serviceItems];
+
+    // Build dynamic Category Tabs from actual active catalog items
+    if (catTabsContainer) {
+      const distinctCats = [];
+      const seenSlugs = new Set(['all']);
+
+      // 1. If services exist, add Services tab
+      if (serviceItems.length > 0) {
+        distinctCats.push({ name: 'Services', slug: 'services' });
+        seenSlugs.add('services');
+      }
+
+      // 2. Add categories from actual product items
+      productItems.forEach(p => {
+        if (p.cat && !seenSlugs.has(p.cat_slug)) {
+          seenSlugs.add(p.cat_slug);
+          distinctCats.push({ name: p.cat, slug: p.cat_slug });
+        }
+      });
+
+      // 3. Render tabs: 'All Items' first, followed by dynamic categories
+      let tabsHtml = `<button class="cat-tab ${currentCategory === 'all' ? 'active' : ''}" data-cat="all" onclick="filterCat('all', this)">All Items</button>`;
+      distinctCats.forEach(c => {
+        const isActive = currentCategory === c.slug || currentCategory.toLowerCase() === c.name.toLowerCase();
+        tabsHtml += `<button class="cat-tab ${isActive ? 'active' : ''}" data-cat="${c.slug}" onclick="filterCat('${c.slug}', this)">${c.name}</button>`;
+      });
+
+      catTabsContainer.innerHTML = tabsHtml;
+    }
+
+    renderProducts(currentCategory || 'all');
   } catch (e) {
-    if (grid && state.productsCache.length === 0) {
+    if (grid && (!state.productsCache || state.productsCache.length === 0)) {
       grid.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">No products yet. <a href="#" onclick="loadPOSProducts()" style="color:#F97316;text-decoration:underline">Retry</a>.</div>';
     }
     if (e.code === 'NETWORK_ERROR') {
@@ -2072,12 +2188,18 @@ async function openProductModal(id = null) {
   const modal = document.getElementById('product-modal');
   if (!modal) { console.error('[openProductModal] product-modal not found in DOM'); return; }
 
-  // Clear/reset all fields using optional chaining so missing IDs never crash
+  // Load fresh categories from API
+  await loadCategories();
+
+  // Clear/reset all fields
   const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val; };
   setVal('prod-id', '');
   setVal('prod-name', '');
   setVal('prod-sku', '');
-  setVal('prod-cat-id', '1');
+  setVal('prod-cat-id', _categoriesCache.length ? String(_categoriesCache[0].id) : '');
+  setVal('prod-new-cat-name', '');
+  const newCatWrap = document.getElementById('prod-new-cat-wrap');
+  if (newCatWrap) newCatWrap.classList.add('hidden');
   setVal('prod-buy-price', '');
   setVal('prod-sell-price', '');
   setVal('prod-stock', '');
@@ -2095,7 +2217,7 @@ async function openProductModal(id = null) {
         const p = data.data;
         setVal('prod-name', p.name || '');
         setVal('prod-sku', p.sku || '');
-        setVal('prod-cat-id', p.category_id || '1');
+        setVal('prod-cat-id', p.category_id ? String(p.category_id) : (_categoriesCache.length ? String(_categoriesCache[0].id) : ''));
         setVal('prod-buy-price', p.buy_price || '');
         setVal('prod-sell-price', p.sell_price || '');
         setVal('prod-stock', p.stock_qty || '0');
@@ -2118,7 +2240,8 @@ async function submitProductModal() {
   const id = document.getElementById('prod-id').value;
   const name = document.getElementById('prod-name').value.trim();
   const sku = document.getElementById('prod-sku').value.trim();
-  const category_id = parseInt(document.getElementById('prod-cat-id').value);
+  const catSelectVal = document.getElementById('prod-cat-id').value;
+  const newCatName = (document.getElementById('prod-new-cat-name')?.value || '').trim();
   const buy_price = parseFloat(document.getElementById('prod-buy-price').value) || 0;
   const sell_price = parseFloat(document.getElementById('prod-sell-price').value);
   const stock_qty = parseInt(document.getElementById('prod-stock').value) || 0;
@@ -2131,8 +2254,20 @@ async function submitProductModal() {
     return;
   }
 
+  let category_id = catSelectVal !== 'NEW_CATEGORY' && catSelectVal ? parseInt(catSelectVal) : null;
+  let new_category = null;
+
+  if (catSelectVal === 'NEW_CATEGORY' || newCatName) {
+    if (!newCatName) {
+      showToast('Please type a name for the new category.');
+      document.getElementById('prod-new-cat-name')?.focus();
+      return;
+    }
+    new_category = newCatName;
+  }
+
   const payload = {
-    name, sku, category_id, buy_price, sell_price, stock_qty, unit, reorder_level, expiry_date
+    name, sku, category_id, new_category, buy_price, sell_price, stock_qty, unit, reorder_level, expiry_date
   };
 
   try {
@@ -2162,9 +2297,10 @@ async function submitProductModal() {
     if (res.success) {
       showToast(id ? 'Product updated successfully!' : 'Product added successfully!');
       closeModal('product-modal');
-      // Reload lists
-      loadInventory();
-      loadPOSProducts();
+      // Reload lists and fresh categories
+      await loadCategories();
+      await loadInventory();
+      await loadPOSProducts();
     } else {
       showToast(res.error || 'Failed to save product.');
     }
@@ -2317,28 +2453,45 @@ function renderProducts(cat = 'all') {
   if (!grid) return;
 
   const query = (document.getElementById('pos-search')?.value || '').toLowerCase();
+  const targetCat = (cat || 'all').toLowerCase();
+
   const items = state.productsCache.filter(p => {
-    // Use .includes() so short tab keys like 'food' match full names like 'food & bev'
-    const matchCat = cat === 'all' || p.cat === cat || p.cat.includes(cat) || cat.includes(p.cat);
+    const pCatName = (p.cat || '').toLowerCase();
+    const pCatSlug = (p.cat_slug || '').toLowerCase();
+    const matchCat = targetCat === 'all' ||
+                     pCatSlug === targetCat ||
+                     pCatName === targetCat ||
+                     pCatName.includes(targetCat) ||
+                     targetCat.includes(pCatName) ||
+                     (targetCat === 'services' && p.is_service);
     const matchSearch = !query || p.name.toLowerCase().includes(query) || p.sku.toLowerCase().includes(query);
     return matchCat && matchSearch;
   });
 
   if (items.length === 0 && state.productsCache.length === 0) {
-    grid.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">Loading products...</div>';
+    grid.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">Loading catalog items...</div>';
     return;
   }
 
-  grid.innerHTML = items.map(p => `
-    <div class="product-card ${p.stock === 0 ? 'out-of-stock' : ''}" onclick="addToCart(${p.id})">
-      <span class="product-code">${p.sku}</span>
-      <div class="product-title">${p.name}</div>
-      <div class="product-cost">KES ${fmt(p.price)}</div>
-      <span class="product-qty-badge ${p.status === 'ok' ? 'ok' : 'low'}">
-        ${p.stock > 0 ? p.stock + ' in stock' : 'Out of stock'}
-      </span>
-    </div>
-  `).join('');
+  if (items.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;color:var(--text-muted);text-align:center;font-size:13px;">No items found in this category.</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map(p => {
+    const badgeText = p.is_service ? 'Billable Service' : (p.stock > 0 ? p.stock + ' in stock' : 'Out of stock');
+    const badgeClass = p.is_service ? 'ok' : (p.status === 'ok' ? 'ok' : 'low');
+    const pidStr = typeof p.id === 'string' ? `'${p.id}'` : p.id;
+
+    return `
+      <div class="product-card ${!p.is_service && p.stock === 0 ? 'out-of-stock' : ''}" onclick="addToCart(${pidStr})">
+        <span class="product-code">${p.sku}</span>
+        <div class="product-title">${p.name}</div>
+        <div class="product-cost">KES ${fmt(p.price)}</div>
+        <span class="product-qty-badge ${badgeClass}">${badgeText}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 function filterCat(cat, btn) {
@@ -2352,11 +2505,11 @@ function filterProducts() {
 }
 
 function addToCart(productId) {
-  const p = state.productsCache.find(x => x.id === productId);
+  const p = state.productsCache.find(x => String(x.id) === String(productId));
   if (!p) return;
-  if (p.stock === 0) { showToast(p.name + ' is out of stock'); return; }
+  if (!p.is_service && p.stock === 0) { showToast(p.name + ' is out of stock'); return; }
 
-  const existing = state.cart.find(item => item.id === productId);
+  const existing = state.cart.find(item => String(item.id) === String(productId));
   if (existing) {
     existing.qty++;
   } else {
@@ -2368,17 +2521,17 @@ function addToCart(productId) {
 }
 
 function updateQty(id, delta) {
-  const item = state.cart.find(x => x.id === id);
+  const item = state.cart.find(x => String(x.id) === String(id));
   if (!item) return;
   item.qty += delta;
   if (item.qty <= 0) {
-    state.cart = state.cart.filter(x => x.id !== id);
+    state.cart = state.cart.filter(x => String(x.id) !== String(id));
   }
   renderCart();
 }
 
 function removeFromCart(id) {
-  state.cart = state.cart.filter(x => x.id !== id);
+  state.cart = state.cart.filter(x => String(x.id) !== String(id));
   renderCart();
 }
 
@@ -2396,21 +2549,24 @@ function renderCart() {
 
   if (emptyState) emptyState.style.display = 'none';
 
-  container.innerHTML = state.cart.map(item => `
+  container.innerHTML = state.cart.map(item => {
+    const idStr = typeof item.id === 'string' ? `'${item.id}'` : item.id;
+    return `
     <div class="cart-row">
       <div class="cart-row-info">
-        <div class="cart-row-title">${item.name}</div>
-        <div class="cart-row-sub">KES ${fmt(item.price)} each</div>
+        <div class="cart-row-title">${item.name}${item.is_service ? ' <span style="font-size:10px;color:var(--text-muted);font-weight:500">(Service)</span>' : ''}</div>
+        <div class="cart-row-sub">KES ${fmt(item.price)} ${item.is_service ? (item.unit || 'per service') : 'each'}</div>
       </div>
       <div class="cart-row-qty">
-        <button class="btn-qty" onclick="updateQty(${item.id}, -1)">-</button>
+        <button class="btn-qty" onclick="updateQty(${idStr}, -1)">-</button>
         <span class="qty-num">${item.qty}</span>
-        <button class="btn-qty" onclick="updateQty(${item.id}, 1)">+</button>
+        <button class="btn-qty" onclick="updateQty(${idStr}, 1)">+</button>
       </div>
       <div class="cart-row-total">KES ${fmt(item.price * item.qty)}</div>
-      <button class="btn-del" onclick="removeFromCart(${item.id})">&times;</button>
+      <button class="btn-del" onclick="removeFromCart(${idStr})">&times;</button>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   const subtotal = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const vat = Math.round(subtotal * 0.16);
@@ -3778,7 +3934,7 @@ function initHRCharts() {
   if (c2 && !state.chartInstances.payroll) {
     state.chartInstances.payroll = new Chart(c2, {
       type: 'doughnut',
-      data: { labels: ['Basic','Allowances','Deductions'], datasets: [{ data: [0,0,0], backgroundColor: ['#F97316','#10B981','#F59E0B'], borderWidth: 0 }] },
+      data: { labels: ['Basic','Allowances','Deductions'], datasets: [{ data: [0,0,0], backgroundColor: ['#3B82F6','#10B981','#F59E0B'], borderWidth: 0 }] },
       options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
     });
   }
@@ -4599,6 +4755,8 @@ async function sendAIMessage() {
         addAIMsg('To activate the AI assistant, open your <strong>.env</strong> file and replace <code>YOUR_GEMINI_API_KEY_HERE</code> with your actual Gemini API key, then restart the server.', 'bot');
       } else if (data.code === 'QUOTA_EXCEEDED') {
         addAIMsg('Your free-tier Gemini key has reached its daily limit. To remove this restriction, enable billing at <strong>https://ai.dev</strong> — or wait until tomorrow for the quota to reset.', 'bot');
+      } else if (data.code === 'SERVICE_UNAVAILABLE') {
+        addAIMsg('The AI service is under high demand right now. Please wait a moment and try again — this is usually resolved within a minute or two.', 'bot');
       }
     } else {
       addAIMsg(data.reply, 'bot');
@@ -5060,7 +5218,7 @@ function downloadCSVTemplate(type = 'products') {
   if (type === 'services') {
     csvContent = 'code,name,category,price,unit,vat_applicable\nSRV-101,Sample Service,Maintenance,1500,Per Hour,1\n';
   } else {
-    csvContent = 'name,sku,buy_price,sell_price,stock_qty,reorder_level,unit\nSample Product,PRD-101,500,800,50,10,pcs\n';
+    csvContent = 'name,sku,category,buy_price,sell_price,stock_qty,reorder_level,unit\nSample Product,PRD-101,Beverages,500,800,50,10,pcs\n';
   }
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

@@ -437,12 +437,8 @@
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
               <input type="text" id="pos-search" placeholder="Search product or SKU..." oninput="filterProducts()" />
             </div>
-            <div class="cat-tabs">
-              <button class="cat-tab active" data-cat="all">All Items</button>
-              <button class="cat-tab" data-cat="food">Food &amp; Bev</button>
-              <button class="cat-tab" data-cat="electronics">Electronics</button>
-              <button class="cat-tab" data-cat="household">Household</button>
-              <button class="cat-tab" data-cat="clothing">Clothing</button>
+            <div class="cat-tabs" id="pos-cat-tabs">
+              <button class="cat-tab active" data-cat="all" onclick="filterCat('all', this)">All Items</button>
             </div>
             <div class="products-grid" id="products-grid"></div>
           </div>
@@ -548,7 +544,7 @@
               <label class="pay-label">Customer Phone</label>
               <div class="pay-input-wrap">
                 <span class="pay-currency">+254</span>
-                <input type="text" id="mpesa-phone" placeholder="7XX XXX XXX" value="712 345 678" />
+                <input type="text" id="mpesa-phone" placeholder="7XX XXX XXX" />
               </div>
               <button class="stk-btn" onclick="triggerSTK()">Send STK Push</button>
               <div class="stk-status" id="stk-status">Ready — enter phone and send prompt</div>
@@ -627,7 +623,7 @@
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
             <input type="text" class="search-input" placeholder="Search inventory..." id="inv-search" oninput="filterInventory()" />
           </div>
-          <select class="filter-select" id="inv-cat-filter" onchange="filterInventory()"><option value="">All Categories</option><option>Food &amp; Bev</option><option>Electronics</option><option>Household</option></select>
+          <select class="filter-select" id="inv-cat-filter" onchange="filterInventory()"><option value="">All Categories</option></select>
           <select class="filter-select" id="inv-status-filter" onchange="filterInventory()"><option value="">All Status</option><option value="ok">Healthy</option><option value="low">Low</option><option value="out">Out</option><option value="expiring">Expiring</option></select>
         </div>
         <div class="data-table-wrap">
@@ -1546,14 +1542,13 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">SKU / Code</label><input type="text" class="form-field-input" id="prod-sku" placeholder="MILK-400G" style="width:100%;margin-top:4px;" /></div>
           <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Category</label>
-            <select class="form-field-input" id="prod-cat-id" style="width:100%;margin-top:4px;">
-              <option value="1">Food &amp; Beverages</option>
-              <option value="2">Electronics</option>
-              <option value="3">Household</option>
-              <option value="4">Clothing</option>
-              <option value="5">Personal Care</option>
-              <option value="6">Equipment</option>
+            <select class="form-field-input" id="prod-cat-id" style="width:100%;margin-top:4px;" onchange="onProductCategoryChange(this.value)">
+              <option value="">Select Category...</option>
+              <option value="NEW_CATEGORY">+ Add New Category...</option>
             </select>
+            <div id="prod-new-cat-wrap" class="hidden" style="margin-top:6px;">
+              <input type="text" class="form-field-input" id="prod-new-cat-name" placeholder="Type new category name (e.g. Beverages)..." style="width:100%;" />
+            </div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
