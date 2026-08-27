@@ -11,6 +11,9 @@ const ctrl = require('../controllers/branchController');
 // GET /api/branches — All authenticated users can list active branches
 router.get('/', requireAuth, ctrl.getBranches);
 
+// GET /api/branches/performance — Owner-Exclusive branch comparative performance metrics
+router.get('/performance', requireAuth, requireRole('owner'), ctrl.getBranchPerformance);
+
 // POST /api/branches — Owner & Manager can create new branches
 router.post('/', requireAuth, requireRole('owner', 'manager'), ctrl.createBranch);
 

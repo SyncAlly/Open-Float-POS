@@ -188,21 +188,23 @@ function applyBranchSession() {
   const branchSelector = document.querySelector('.branch-selector');
   const branchStatusEl = document.querySelector('.branch-status');
 
-  const assignedBranch = user.branch_name || 'Main Branch';
-  state.currentBranch = { name: assignedBranch, id: user.branch_id || 1 };
-
-  if (branchNameEl) branchNameEl.textContent = assignedBranch;
-
   if (user.role === 'owner') {
-    // Owner: full access — restore interactive switcher
+    // Owner defaults to All Branches (HQ Overview) upon login!
+    state.currentBranch = { name: 'All Branches (HQ Overview)', id: 'all' };
+    if (branchNameEl) branchNameEl.textContent = 'All Branches (HQ Overview)';
+    if (branchStatusEl) branchStatusEl.textContent = 'Online · Enterprise HQ';
+
     if (branchSelector) {
       branchSelector.style.cursor = 'pointer';
       branchSelector.style.opacity = '1';
       branchSelector.setAttribute('onclick', 'openBranchModal()');
       branchSelector.title = 'Click to switch branch';
     }
-    if (branchStatusEl) branchStatusEl.textContent = 'Online · All Access';
   } else {
+    const assignedBranch = user.branch_name || 'Main Branch';
+    state.currentBranch = { name: assignedBranch, id: user.branch_id || 1 };
+    if (branchNameEl) branchNameEl.textContent = assignedBranch;
+
     // Non-owner: lock the branch switcher
     if (branchSelector) {
       branchSelector.style.cursor = 'default';
@@ -213,6 +215,8 @@ function applyBranchSession() {
     }
     if (branchStatusEl) branchStatusEl.textContent = 'Online · Branch Locked';
   }
+
+  applyRolePermissions();
 }
 
 function updateUserUI() {
@@ -237,10 +241,11 @@ function updateUserUI() {
 function applyRolePermissions() {
   if (!state.user) return;
   const role = (state.user.role || 'cashier').toLowerCase();
+  const isHQMode = role === 'owner' && (!state.currentBranch || state.currentBranch.id === 'all');
 
   // Role permissions map: view IDs allowed for each role
   const permissions = {
-    owner: ['*'],
+    owner: isHQMode ? ['dashboard', 'branch-comparison', 'ai', 'settings'] : ['*'],
     manager: ['*'],
     cashier: ['sales', 'crm', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
     hr: ['hr'],
@@ -250,12 +255,35 @@ function applyRolePermissions() {
   const allowedViews = permissions[role] || permissions.cashier;
   const isSuper = allowedViews.includes('*');
 
+  // 1. Filter nav items
   document.querySelectorAll('.sidebar-nav .nav-item[data-view]').forEach(item => {
     const view = item.getAttribute('data-view');
+    // In individual branch mode, hide branch-comparison (it is an enterprise HQ tool)
+    if (view === 'branch-comparison' && !isHQMode) {
+      item.style.display = 'none';
+      return;
+    }
+
     if (!isSuper && !allowedViews.includes(view)) {
       item.style.display = 'none';
     } else {
       item.style.display = 'flex';
+    }
+  });
+
+  // 2. Hide/show sidebar section headers when in HQ mode
+  const sectionLabels = document.querySelectorAll('.sidebar-section-label');
+  sectionLabels.forEach(lbl => {
+    const text = lbl.textContent.trim().toUpperCase();
+    if (isHQMode) {
+      if (text === 'COMMERCE') lbl.textContent = 'ENTERPRISE HQ';
+      else if (text === 'PEOPLE & OPS') lbl.textContent = 'INTELLIGENCE';
+      else if (text === 'INVENTORY' || text === 'FINANCE') lbl.style.display = 'none';
+      else lbl.style.display = '';
+    } else {
+      if (text === 'ENTERPRISE HQ') lbl.textContent = 'COMMERCE';
+      else if (text === 'INTELLIGENCE') lbl.textContent = 'PEOPLE & OPS';
+      lbl.style.display = '';
     }
   });
 }
@@ -554,6 +582,7 @@ function navTo(viewId) {
 
   const targetView = document.getElementById('view-' + viewId);
   if (targetView) targetView.classList.add('active');
+  state.currentView = viewId; // Track active view for context-aware operations
 
   // Trigger specific view data & charts on navigation
   setTimeout(() => {
@@ -573,6 +602,7 @@ function navTo(viewId) {
     if (viewId === 'z-reports') loadZReports();
     if (viewId === 'ai') loadAI();
     if (viewId === 'settings') loadSettings();
+    if (viewId === 'branch-comparison') loadBranchComparisonView();
   }, 50);
 }
 
@@ -797,8 +827,10 @@ async function loadPOSProducts() {
   const grid = document.getElementById('products-grid');
   const catTabsContainer = document.getElementById('pos-cat-tabs');
   try {
+  const branchId = state.currentBranch && state.currentBranch.id ? state.currentBranch.id : null;
+    const invUrl = (branchId && branchId !== 'all') ? `/api/inventory?branch_id=${branchId}` : '/api/inventory';
     const [invRes, srvRes, catRes] = await Promise.allSettled([
-      apiGet('/api/inventory'),
+      apiGet(invUrl),
       apiGet('/api/services'),
       apiGet('/api/inventory/categories')
     ]);
@@ -906,21 +938,60 @@ async function loadCustomers() {
 
 async function loadDashboardKPIs() {
   try {
-    const [overviewRes, inventoryRes, txsRes, hrRes, prRes, branchesRes] = await Promise.allSettled([
-      apiGet('/api/accounting/overview'),
-      apiGet('/api/inventory'),
-      apiGet('/api/sales/transactions?limit=1000'),
-      apiGet('/api/hr/employees'),
-      apiGet('/api/procurement/requests'),
-      apiGet('/api/branches')
-    ]);
+    const isEnterprise = state.currentBranch && (state.currentBranch.id === 'all' || state.currentBranch.id === 0);
+    const branchId = state.currentBranch?.id;
+
+    // Update greeting / scope subtitle
+    const greetingSub = document.querySelector('.greeting-sub');
+    if (greetingSub) {
+      if (isEnterprise) {
+        greetingSub.innerHTML = `<strong>Enterprise Overview</strong> — Consolidated performance across all branches &amp; locations.`;
+      } else {
+        greetingSub.innerHTML = `Showing live operational performance for <strong>${state.currentBranch?.name || 'Current Branch'}</strong>.`;
+      }
+    }
+
+    const apiCalls = isEnterprise
+      ? [
+          apiGet('/api/accounting/overview'),
+          apiGet('/api/inventory'),
+          apiGet('/api/sales/transactions?limit=1000'),
+          apiGet('/api/hr/employees'),
+          apiGet('/api/procurement/requests'),
+          apiGet('/api/branches'),
+          apiGet('/api/branches/performance')
+        ]
+      : [
+          apiGet(`/api/accounting/overview?branch_id=${branchId}`),
+          apiGet(`/api/inventory?branch_id=${branchId}`),
+          apiGet(`/api/sales/transactions?limit=1000&branch_id=${branchId}`),
+          apiGet(`/api/hr/employees?branch_id=${branchId}`),
+          apiGet('/api/procurement/requests'),
+          apiGet('/api/branches')
+        ];
+
+    const results = await Promise.allSettled(apiCalls);
+    const overviewRes  = results[0];
+    const inventoryRes = results[1];
+    const txsRes       = results[2];
+    const hrRes        = results[3];
+    const prRes        = results[4];
+    const branchesRes  = results[5];
+    const branchPerfRes = isEnterprise ? results[6] : null;
 
     const overview  = overviewRes.status  === 'fulfilled' ? (overviewRes.value.data  || {}) : {};
-    const products  = inventoryRes.status === 'fulfilled' ? (inventoryRes.value.data || []) : [];
-    const txs       = txsRes.status       === 'fulfilled' ? (txsRes.value.data       || []) : [];
-    const employees = hrRes.status        === 'fulfilled' ? (hrRes.value.data        || []) : [];
+    let products    = inventoryRes.status === 'fulfilled' ? (inventoryRes.value.data || []) : [];
+    let txs         = txsRes.status       === 'fulfilled' ? (txsRes.value.data       || []) : [];
+    let employees   = hrRes.status        === 'fulfilled' ? (hrRes.value.data        || []) : [];
     const prs       = prRes.status        === 'fulfilled' ? (prRes.value.data        || []) : [];
     const branches  = branchesRes.status  === 'fulfilled' ? (branchesRes.value.data  || []) : [];
+
+    // If branch scoped, double check client-side filtering as well
+    if (!isEnterprise && branchId) {
+      products = products.filter(p => p.branch_id == branchId || !p.branch_id);
+      txs = txs.filter(t => t.branch_id == branchId);
+      employees = employees.filter(e => e.branch_id == branchId);
+    }
 
     state.dashboardTxs = txs; // Cache transactions for period chart updating
     state.branchesCache = branches;
@@ -928,15 +999,15 @@ async function loadDashboardKPIs() {
     const setKPI = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
     // 1. KPI Cards
-    const totalRev = overview.total_revenue || txs.reduce((sum, t) => sum + (t.total || 0), 0);
+    const totalRev = overview.total_revenue !== undefined ? overview.total_revenue : txs.reduce((sum, t) => sum + (t.total || 0), 0);
     const netProfit = overview.net_profit !== undefined ? overview.net_profit : (totalRev * 0.3);
-    const totalTxCount = txs.length || overview.total_transactions || 0;
+    const totalTxCount = txs.length;
     const arBalance = overview.outstanding_ar || 0;
 
-    setKPI('kpi-revenue', 'KES ' + fmt(Math.round(totalRev)));
-    setKPI('kpi-profit', 'KES ' + fmt(Math.round(netProfit)));
+    setKPI('kpi-revenue', getCurrency() + ' ' + fmt(Math.round(totalRev)));
+    setKPI('kpi-profit', getCurrency() + ' ' + fmt(Math.round(netProfit)));
     setKPI('kpi-transactions', fmt(totalTxCount));
-    setKPI('kpi-outstanding-ar', 'KES ' + fmt(Math.round(arBalance)));
+    setKPI('kpi-outstanding-ar', getCurrency() + ' ' + fmt(Math.round(arBalance)));
 
     // 2. Metric Chips
     const cashTotal = txs.filter(t => t.payment_method === 'cash').reduce((sum, t) => sum + (t.total || 0), 0);
@@ -946,14 +1017,14 @@ async function loadDashboardKPIs() {
     const presentStaff = employees.filter(e => e.status === 'present').length;
     const totalStaff = employees.length || 0;
 
-    const activeBranchesCount = branches.filter(b => b.is_active !== 0).length || 1;
-    const totalBranchesCount  = branches.length || 1;
+    const activeBranchesCount = isEnterprise ? (branches.filter(b => b.is_active !== 0).length || 1) : 1;
+    const totalBranchesCount  = isEnterprise ? (branches.length || 1) : 1;
 
-    setKPI('chip-cash', 'KES ' + fmt(Math.round(cashTotal)));
-    setKPI('chip-bank', 'KES ' + fmt(Math.round(bankTotal)));
-    setKPI('chip-mpesa', 'KES ' + fmt(Math.round(mpesaTotal)));
-    setKPI('chip-inv-val', 'KES ' + fmt(Math.round(invValue)));
-    setKPI('chip-branches', `${activeBranchesCount} / ${totalBranchesCount}`);
+    setKPI('chip-cash', getCurrency() + ' ' + fmt(Math.round(cashTotal)));
+    setKPI('chip-bank', getCurrency() + ' ' + fmt(Math.round(bankTotal)));
+    setKPI('chip-mpesa', getCurrency() + ' ' + fmt(Math.round(mpesaTotal)));
+    setKPI('chip-inv-val', getCurrency() + ' ' + fmt(Math.round(invValue)));
+    setKPI('chip-branches', isEnterprise ? `${activeBranchesCount} / ${totalBranchesCount}` : '1 / 1 (Selected)');
     setKPI('chip-staff', `${presentStaff} / ${totalStaff}`);
 
     // 3. Payment Donut Chart & Legend
@@ -992,7 +1063,7 @@ async function loadDashboardKPIs() {
       state.chartInstances.revenue.update();
     }
 
-    // Sparklines (calculated from live transactions chronologically)
+    // Sparklines
     const numPoints = 7;
     let revSpark = Array(numPoints).fill(0);
     let profSpark = Array(numPoints).fill(0);
@@ -1002,23 +1073,19 @@ async function loadDashboardKPIs() {
     if (txs.length > 0) {
       const sortedTxs = [...txs].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       const chunkSize = sortedTxs.length / numPoints;
-      
       const creditSalesBuckets = Array(numPoints).fill(0);
-      
+
       for (let i = 0; i < sortedTxs.length; i++) {
         const bucketIndex = Math.min(Math.floor(i / chunkSize), numPoints - 1);
         const t = sortedTxs[i];
-        
         revSpark[bucketIndex] += t.total || 0;
-        profSpark[bucketIndex] += (t.total || 0) * 0.3; // 30% estimated gross margin
+        profSpark[bucketIndex] += (t.total || 0) * 0.3;
         txnSpark[bucketIndex] += 1;
-        
         if (t.payment_method === 'credit') {
           creditSalesBuckets[bucketIndex] += t.total || 0;
         }
       }
-      
-      // Calculate outstanding debt trend working backward from arBalance
+
       debtSpark[numPoints - 1] = arBalance;
       for (let i = numPoints - 2; i >= 0; i--) {
         debtSpark[i] = Math.max(0, debtSpark[i + 1] - creditSalesBuckets[i + 1]);
@@ -1032,7 +1099,7 @@ async function loadDashboardKPIs() {
     drawSparkline('spark-txn', txnSpark, '#8B5CF6');
     drawSparkline('spark-debt', debtSpark, '#EF4444');
 
-    // 5. Stock Alerts List
+    // 5. Stock Alerts List (Filtered to current branch)
     const stockListEl = document.getElementById('dash-stock-list');
     if (stockListEl) {
       const alertItems = products.filter(p => (p.stock_qty || p.stock || 0) <= (p.reorder_level || 10) || p.expiry_date).slice(0, 5);
@@ -1057,37 +1124,28 @@ async function loadDashboardKPIs() {
       }
     }
 
-    // 6. Branch Performance List (Includes all registered system branches)
+    // 6. Branch Performance Summary Card Widget
     const branchListEl = document.getElementById('dash-branch-list');
     if (branchListEl) {
-      // Group transactions by branch ID and branch name
+      const displayBranches = isEnterprise ? branches : branches.filter(b => b.id == branchId);
       const salesByBranchId = {};
-      const salesByBranchName = {};
       txs.forEach(t => {
         if (t.branch_id) {
           salesByBranchId[t.branch_id] = (salesByBranchId[t.branch_id] || 0) + (t.total || 0);
         }
-        const bname = t.branch_name || 'Main Branch';
-        salesByBranchName[bname.toLowerCase()] = (salesByBranchName[bname.toLowerCase()] || 0) + (t.total || 0);
       });
 
-      // Build branch performance entries starting with all system branches
-      let branchList = branches.map(b => {
-        const rev = salesByBranchId[b.id] !== undefined ? salesByBranchId[b.id] : (salesByBranchName[(b.name || '').toLowerCase()] || 0);
-        return {
-          id: b.id,
-          name: b.name || 'Branch ' + b.id,
-          revenue: rev,
-          status: b.is_active !== 0 ? 'Active' : 'Inactive'
-        };
-      });
+      let branchList = displayBranches.map(b => ({
+        id: b.id,
+        name: b.name || 'Branch ' + b.id,
+        revenue: isEnterprise ? (salesByBranchId[b.id] || 0) : totalRev,
+        status: b.is_active !== 0 ? 'Active' : 'Inactive'
+      }));
 
-      // Fallback if no branches array returned
       if (branchList.length === 0) {
-        branchList = [{ id: 1, name: 'Main Branch', revenue: totalRev, status: 'Active' }];
+        branchList = [{ id: branchId || 1, name: state.currentBranch?.name || 'Main Branch', revenue: totalRev, status: 'Active' }];
       }
 
-      // Sort by revenue descending
       branchList.sort((a, b) => b.revenue - a.revenue);
       const rankClasses = ['gold', 'silver', 'bronze', ''];
       const maxRev = branchList[0]?.revenue || 1;
@@ -1140,7 +1198,7 @@ async function loadDashboardKPIs() {
       }
     }
 
-    // 8. Pending Approvals Grid (real data only)
+    // 8. Pending Approvals Grid
     const appGridEl = document.getElementById('dash-approvals-grid');
     if (appGridEl) {
       const pendingItems = prs.filter(p => p.status === 'pending');
@@ -1162,22 +1220,354 @@ async function loadDashboardKPIs() {
       }
     }
 
-    applyDashboardCustomization();
+    // 9. HQ Enterprise Comparison Quick Link Banner (Owner Only)
+    const hqBanner = document.getElementById('dash-hq-banner');
+    if (hqBanner) {
+      if (isEnterprise && state.user?.role === 'owner') {
+        hqBanner.classList.remove('hidden');
+      } else {
+        hqBanner.classList.add('hidden');
+      }
+    }
+
   } catch (e) {
-    console.error('[Dashboard Error]', e);
+    console.error('[loadDashboardKPIs] Error:', e);
   }
+}
+
+/* ── DEDICATED BRANCH COMPARISON PAGE (OWNER EXCLUSIVE) ───────────── */
+let _compArea = 'sales'; // 'sales' | 'hr' | 'inventory' | 'channels'
+let _compMetric = 'm1'; // 'm1' | 'm2' | 'm3'
+let _compChartType = 'bar'; // 'bar' | 'line'
+let _compDataCache = [];
+
+async function loadBranchComparisonView() {
+  if (state.user?.role !== 'owner') {
+    showToast('Access restricted to Owner.');
+    navTo('dashboard');
+    return;
+  }
+
+  try {
+    const res = await apiGet('/api/branches/performance');
+    _compDataCache = (res && res.success) ? (res.data || []) : [];
+    
+    // 1. Update 4 Summary KPI Cards
+    const totalRev = _compDataCache.reduce((s, b) => s + (b.total_revenue || 0), 0);
+    const totalStaff = _compDataCache.reduce((s, b) => s + (b.staff_count || 0), 0);
+    const totalInv = _compDataCache.reduce((s, b) => s + (b.inventory_value || 0), 0);
+    const totalLowStock = _compDataCache.reduce((s, b) => s + (b.low_stock_count || 0), 0);
+    
+    const sortedByRev = [..._compDataCache].sort((a, b) => (b.total_revenue || 0) - (a.total_revenue || 0));
+    const topBranch = sortedByRev[0]?.name || '—';
+    const topBranchRev = sortedByRev[0]?.total_revenue || 0;
+    const topBranchShare = totalRev > 0 ? Math.round((topBranchRev / totalRev) * 100) : 0;
+
+    const avgAttendance = _compDataCache.length > 0
+      ? Math.round(_compDataCache.reduce((s, b) => s + (b.avg_attendance_pct || 0), 0) / _compDataCache.length)
+      : 0;
+
+    const setEl = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    setEl('comp-total-rev', getCurrency() + ' ' + fmt(Math.round(totalRev)));
+    setEl('comp-top-branch', topBranch);
+    setEl('comp-top-branch-rev', `${topBranchShare}% of enterprise revenue`);
+    setEl('comp-total-staff', fmt(totalStaff) + ' Employees');
+    setEl('comp-avg-attendance', `Avg attendance: ${avgAttendance}%`);
+    setEl('comp-total-inv', getCurrency() + ' ' + fmt(Math.round(totalInv)));
+    setEl('comp-total-low-stock', `${totalLowStock} items low in stock`);
+    setEl('comp-branch-count-badge', `${_compDataCache.length} Active Locations`);
+
+    // 2. Render Charts & Table
+    updateBranchComparisonPageCharts();
+    renderBranchComparisonMatrixTable();
+
+  } catch (err) {
+    console.error('[BranchComparison] Error loading data:', err);
+    showToast('Failed to load branch comparative analytics.');
+  }
+}
+
+function switchComparisonArea(area) {
+  _compArea = area;
+  _compMetric = 'm1'; // reset to first metric
+
+  // Update tabs
+  ['sales', 'hr', 'inventory', 'channels'].forEach(a => {
+    const tab = document.getElementById(`tab-comp-${a}`);
+    if (tab) tab.classList.toggle('active', a === area);
+  });
+
+  // Update pill buttons labels
+  const pill1 = document.getElementById('btn-comp-m1');
+  const pill2 = document.getElementById('btn-comp-m2');
+  const pill3 = document.getElementById('btn-comp-m3');
+  const title = document.getElementById('comp-chart-title');
+  const sub = document.getElementById('comp-chart-subtitle');
+  const donutTitle = document.getElementById('comp-donut-title');
+
+  if (area === 'sales') {
+    if (title) title.textContent = 'Cross-Branch Sales & Revenue Comparison';
+    if (sub) sub.textContent = 'Comparing total revenue, order count, and average order value across stores';
+    if (donutTitle) donutTitle.textContent = 'Revenue Share';
+    if (pill1) pill1.textContent = 'Revenue';
+    if (pill2) pill2.textContent = 'Orders';
+    if (pill3) pill3.textContent = 'Avg Order';
+  } else if (area === 'hr') {
+    if (title) title.textContent = 'Staff Productivity & HR Efficiency';
+    if (sub) sub.textContent = 'Comparing workforce headcount, attendance percentage, and payroll expenditure';
+    if (donutTitle) donutTitle.textContent = 'Staff Distribution';
+    if (pill1) pill1.textContent = 'Headcount';
+    if (pill2) pill2.textContent = 'Attendance %';
+    if (pill3) pill3.textContent = 'Payroll (' + getCurrency() + ')';
+  } else if (area === 'inventory') {
+    if (title) title.textContent = 'Inventory Valuation & Stock Health';
+    if (sub) sub.textContent = 'Comparing stock valuation, SKU counts, and low-stock replenishment risks';
+    if (donutTitle) donutTitle.textContent = 'Inventory Value Share';
+    if (pill1) pill1.textContent = 'Stock Value';
+    if (pill2) pill2.textContent = 'Active SKUs';
+    if (pill3) pill3.textContent = 'Low Stock Alerts';
+  } else if (area === 'channels') {
+    if (title) title.textContent = 'Payment Channels & Collection Mix';
+    if (sub) sub.textContent = 'Comparing M-Pesa mobile money, Cash, Card, and Credit sales across branches';
+    if (donutTitle) donutTitle.textContent = 'Payment Method Mix';
+    if (pill1) pill1.textContent = 'M-Pesa Sales';
+    if (pill2) pill2.textContent = 'Cash Sales';
+    if (pill3) pill3.textContent = 'Credit Sales';
+  }
+
+  setCompPageMetric('m1');
+}
+
+function setCompPageMetric(metric) {
+  _compMetric = metric;
+  ['m1', 'm2', 'm3'].forEach(m => {
+    document.getElementById(`btn-comp-${m}`)?.classList.toggle('active', m === metric);
+  });
+  updateBranchComparisonPageCharts();
+}
+
+function setCompPageChartType(type) {
+  _compChartType = type;
+  document.getElementById('btn-comp-chart-bar')?.classList.toggle('active', type === 'bar');
+  document.getElementById('btn-comp-chart-line')?.classList.toggle('active', type === 'line');
+  updateBranchComparisonPageCharts();
+}
+
+function updateBranchComparisonPageCharts() {
+  if (!_compDataCache || !_compDataCache.length) return;
+
+  const labels = _compDataCache.map(b => b.name);
+  const cur = getCurrency();
+  let datasetLabel = '';
+  let dataValues = [];
+  let isCurrency = false;
+  let isPercentage = false;
+
+  const bgColors = ['#EA580C', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+  const borderColors = ['#C2410C', '#2563EB', '#059669', '#D97706', '#7C3AED', '#DB2777', '#0891B2'];
+
+  if (_compArea === 'sales') {
+    if (_compMetric === 'm1') {
+      datasetLabel = `Total Revenue (${cur})`;
+      dataValues = _compDataCache.map(b => Math.round(b.total_revenue || 0));
+      isCurrency = true;
+    } else if (_compMetric === 'm2') {
+      datasetLabel = 'Total Completed Orders';
+      dataValues = _compDataCache.map(b => b.transaction_count || 0);
+    } else {
+      datasetLabel = `Average Order Value (${cur})`;
+      dataValues = _compDataCache.map(b => Math.round(b.avg_order_value || 0));
+      isCurrency = true;
+    }
+  } else if (_compArea === 'hr') {
+    if (_compMetric === 'm1') {
+      datasetLabel = 'Staff Headcount';
+      dataValues = _compDataCache.map(b => b.staff_count || 0);
+    } else if (_compMetric === 'm2') {
+      datasetLabel = 'Average Attendance Rate (%)';
+      dataValues = _compDataCache.map(b => Math.round(b.avg_attendance_pct || 0));
+      isPercentage = true;
+    } else {
+      datasetLabel = `Monthly Payroll (${cur})`;
+      dataValues = _compDataCache.map(b => Math.round(b.total_payroll || 0));
+      isCurrency = true;
+    }
+  } else if (_compArea === 'inventory') {
+    if (_compMetric === 'm1') {
+      datasetLabel = `Inventory Holding Value (${cur})`;
+      dataValues = _compDataCache.map(b => Math.round(b.inventory_value || 0));
+      isCurrency = true;
+    } else if (_compMetric === 'm2') {
+      datasetLabel = 'Active Catalog SKUs';
+      dataValues = _compDataCache.map(b => b.product_count || 0);
+    } else {
+      datasetLabel = 'Low Stock Alert Items';
+      dataValues = _compDataCache.map(b => b.low_stock_count || 0);
+    }
+  } else if (_compArea === 'channels') {
+    if (_compMetric === 'm1') {
+      datasetLabel = `M-Pesa Volume (${cur})`;
+      dataValues = _compDataCache.map(b => Math.round(b.mpesa_revenue || 0));
+      isCurrency = true;
+    } else if (_compMetric === 'm2') {
+      datasetLabel = `Cash Volume (${cur})`;
+      dataValues = _compDataCache.map(b => Math.round(b.cash_revenue || 0));
+      isCurrency = true;
+    } else {
+      datasetLabel = `Credit Sales (${cur})`;
+      dataValues = _compDataCache.map(b => Math.round(b.credit_revenue || 0));
+      isCurrency = true;
+    }
+  }
+
+  // 1. Render Main Chart
+  const mainCanvas = document.getElementById('compPageMainChart');
+  if (mainCanvas) {
+    if (state.chartInstances.compPageMain) {
+      state.chartInstances.compPageMain.destroy();
+    }
+
+    state.chartInstances.compPageMain = new Chart(mainCanvas, {
+      type: _compChartType,
+      data: {
+        labels: labels,
+        datasets: [{
+          label: datasetLabel,
+          data: dataValues,
+          backgroundColor: _compChartType === 'bar' ? bgColors.slice(0, labels.length) : 'rgba(234, 88, 12, 0.15)',
+          borderColor: _compChartType === 'bar' ? borderColors.slice(0, labels.length) : '#EA580C',
+          borderWidth: 2,
+          borderRadius: 6,
+          fill: _compChartType === 'line',
+          tension: 0.35
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` ${ctx.dataset.label}: ${isCurrency ? cur + ' ' : ''}${fmt(ctx.raw)}${isPercentage ? '%' : ''}`
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }
+        }
+      }
+    });
+  }
+
+  // 2. Render Donut Chart
+  const donutCanvas = document.getElementById('compPageDonutChart');
+  const donutLegend = document.getElementById('comp-page-donut-legend');
+  if (donutCanvas) {
+    if (state.chartInstances.compPageDonut) {
+      state.chartInstances.compPageDonut.destroy();
+    }
+
+    const total = dataValues.reduce((a, b) => a + b, 0);
+
+    state.chartInstances.compPageDonut = new Chart(donutCanvas, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: dataValues.length && total > 0 ? dataValues : [1],
+          backgroundColor: bgColors.slice(0, labels.length),
+          borderWidth: 2,
+          hoverOffset: 5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const val = ctx.raw || 0;
+                const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+                return ` ${ctx.label}: ${isCurrency ? cur + ' ' : ''}${fmt(val)}${isPercentage ? '%' : ''} (${pct}%)`;
+              }
+            }
+          }
+        },
+        cutout: '68%'
+      }
+    });
+
+    if (donutLegend) {
+      donutLegend.innerHTML = labels.map((l, i) => {
+        const val = dataValues[i] || 0;
+        const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+        return `
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${bgColors[i]}"></span>
+            <span>${l} <strong>${pct}%</strong></span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
+function renderBranchComparisonMatrixTable() {
+  const tbody = document.getElementById('comp-matrix-tbody');
+  if (!tbody) return;
+
+  if (!_compDataCache.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-muted);">No active branches found.</td></tr>';
+    return;
+  }
+
+  const sorted = [..._compDataCache].sort((a, b) => (b.total_revenue || 0) - (a.total_revenue || 0));
+
+  tbody.innerHTML = sorted.map((b, idx) => {
+    const rev = b.total_revenue || 0;
+    const tx = b.transaction_count || 0;
+    const avg = b.avg_order_value || 0;
+    const staff = b.staff_count || 0;
+    const att = Math.round(b.avg_attendance_pct || 0);
+    const inv = b.inventory_value || 0;
+
+    let ratingBadge = '<span class="badge badge-green">Top Tier</span>';
+    if (idx === 1) ratingBadge = '<span class="badge badge-blue">Growth Leader</span>';
+    else if (idx > 1) ratingBadge = '<span class="badge badge-amber">Standard</span>';
+
+    return `
+      <tr>
+        <td style="font-weight:700;color:var(--brand);text-align:center;">#${idx + 1}</td>
+        <td><strong>${b.name}</strong></td>
+        <td>${b.location || 'Branch Store'}</td>
+        <td style="text-align:center;">${staff} staff</td>
+        <td style="text-align:center;"><span class="badge ${att >= 85 ? 'badge-green' : 'badge-amber'}">${att}%</span></td>
+        <td style="font-weight:700;color:var(--text-primary);">KES ${fmt(Math.round(rev))}</td>
+        <td>${fmt(tx)} orders</td>
+        <td>KES ${fmt(Math.round(avg))}</td>
+        <td>KES ${fmt(Math.round(inv))}</td>
+        <td>${ratingBadge}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 async function loadInventory() {
   const tbody = document.getElementById('inventory-tbody');
   try {
-    const data = await apiGet('/api/inventory');
+    const branchId = state.currentBranch && state.currentBranch.id ? state.currentBranch.id : 'all';
+    const url = branchId === 'all' ? '/api/inventory' : `/api/inventory?branch_id=${branchId}`;
+    const data = await apiGet(url);
     const items = data.data || [];
     _inventoryCache = items;
     updateInventoryKPIs(items);
     if (tbody) {
       if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text-muted)">No products found. Add products to get started.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text-muted)">No products found for this branch. Add products to get started.</td></tr>';
       } else {
         renderInventoryRows(items);
       }
@@ -2120,7 +2510,9 @@ async function loadStockMovements() {
   const tbody = document.querySelector('#view-stock-movements table.data-table tbody');
   if (!tbody) return;
   try {
-    const data = await apiGet('/api/stock-movements');
+    const branchId = state.currentBranch && state.currentBranch.id ? state.currentBranch.id : 'all';
+    const url = branchId === 'all' ? '/api/stock-movements' : `/api/stock-movements?branch_id=${branchId}`;
+    const data = await apiGet(url);
     _movementsCache = data.data || [];
     updateStockMovementKPIs(_movementsCache);
     filterStockMovements();
@@ -2134,7 +2526,7 @@ function updateStockMovementKPIs(items) {
   const todayCount = items.filter(m => (m.created_at || '').startsWith(todayStr)).length || items.length;
   const returnsCount = items.filter(m => (m.movement_type || '').toUpperCase() === 'RETURN').length;
   const damageCount = items.filter(m => (m.movement_type || '').toUpperCase() === 'DAMAGE' || (m.movement_type || '').toUpperCase() === 'EXPIRY').length;
-  const adjustCount = items.filter(m => (m.movement_type || '').toUpperCase() === 'ADJUSTMENT').length;
+  const adjustCount = items.filter(m => (m.movement_type || '').toUpperCase() === 'ADJUSTMENT' || (m.movement_type || '').toUpperCase().startsWith('TRANSFER')).length;
 
   const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setEl('sm-kpi-today', todayCount);
@@ -2149,11 +2541,13 @@ function filterStockMovements() {
   const q = (document.getElementById('sm-search')?.value || '').toLowerCase();
 
   const filtered = _movementsCache.filter(m => {
-    const matchType = !type || (m.movement_type || '').toUpperCase() === type;
+    const mType = (m.movement_type || '').toUpperCase();
+    const matchType = !type || mType === type || (type === 'TRANSFER' && mType.startsWith('TRANSFER'));
     const matchDate = !date || (m.created_at || '').startsWith(date);
     const matchQ = !q || (m.product_name || '').toLowerCase().includes(q) ||
                          (m.sku || '').toLowerCase().includes(q) ||
-                         (m.ref || '').toLowerCase().includes(q);
+                         (m.ref || '').toLowerCase().includes(q) ||
+                         (m.reason || '').toLowerCase().includes(q);
     return matchType && matchDate && matchQ;
   });
 
@@ -2165,13 +2559,30 @@ function renderStockMovementRows(items) {
   if (!tbody) return;
   const showDelete = canDelete();
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;">No stock movements logged.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;">No stock movements logged for this branch.</td></tr>';
     return;
   }
   tbody.innerHTML = items.map(m => {
     const type = (m.movement_type || 'ADJUSTMENT').toUpperCase();
-    const badgeClass = (type === 'SALE' || type === 'DAMAGE') ? 'badge-red' : (type === 'RETURN' || type === 'PURCHASE') ? 'badge-green' : type === 'EXPIRY' ? 'badge-amber' : 'badge-blue';
-    const sign = (type === 'SALE' || type === 'DAMAGE' || type === 'EXPIRY') ? '' : (m.qty_change > 0 ? '+' : '');
+    let badgeClass = 'badge-blue';
+    let displayType = type;
+    if (type === 'SALE' || type === 'DAMAGE') {
+      badgeClass = 'badge-red';
+    } else if (type === 'RETURN' || type === 'PURCHASE') {
+      badgeClass = 'badge-green';
+    } else if (type === 'EXPIRY') {
+      badgeClass = 'badge-amber';
+    } else if (type === 'TRANSFER_OUT') {
+      badgeClass = 'badge-amber';
+      displayType = 'TRANSFER OUT';
+    } else if (type === 'TRANSFER_IN') {
+      badgeClass = 'badge-purple';
+      displayType = 'TRANSFER IN';
+    } else if (type === 'TRANSFER') {
+      badgeClass = 'badge-purple';
+    }
+
+    const sign = (type === 'SALE' || type === 'DAMAGE' || type === 'EXPIRY' || type === 'TRANSFER_OUT') ? '' : (m.qty_change > 0 ? '+' : '');
     const dt = m.created_at ? new Date(m.created_at).toLocaleString('en-KE', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : 'Today';
 
     return `<tr>
@@ -2179,11 +2590,11 @@ function renderStockMovementRows(items) {
       <td>${dt}</td>
       <td><strong>${m.product_name}</strong></td>
       <td><code>${m.sku || '—'}</code></td>
-      <td><span class="badge ${badgeClass}">${type}</span></td>
+      <td><span class="badge ${badgeClass}">${displayType}</span></td>
       <td style="font-weight:700;">${sign}${m.qty_change}</td>
       <td>${m.reason || '—'}</td>
       <td>${m.recorded_by || 'Staff'}</td>
-      <td>${m.branch_name || 'Nairobi Main'}</td>
+      <td>${m.branch_name || 'Main Branch'}</td>
       <td>${showDelete ? `<button class="btn-sm tiny secondary" style="color:var(--red);" onclick="deleteStockMovement(${m.id}, '${(m.ref || '').replace(/'/g, "\\'")}')">Delete</button>` : '<span style="color:var(--text-muted);font-size:11px;">—</span>'}</td>
     </tr>`;
   }).join('');
@@ -2205,8 +2616,11 @@ async function openStockMovementModal() {
   const suggestions = document.getElementById('mov-product-suggestions');
   if (suggestions) { suggestions.innerHTML = ''; suggestions.classList.add('hidden'); }
 
+  // Load products scoped to the current branch
+  const branchId = state.currentBranch && state.currentBranch.id ? state.currentBranch.id : null;
+  const invUrl = (branchId && branchId !== 'all') ? `/api/inventory?branch_id=${branchId}` : '/api/inventory';
   try {
-    const data = await apiGet('/api/inventory');
+    const data = await apiGet(invUrl);
     if (data && data.data && data.data.length) {
       _movProductsCache = data.data;
     }
@@ -2214,7 +2628,45 @@ async function openStockMovementModal() {
     console.error('[openStockMovementModal] error loading products:', e);
   }
 
+  // Pre-select the current branch in the store selector
+  const storeSelect = document.getElementById('mov-store-select');
+  if (storeSelect && branchId && branchId !== 'all') {
+    // Try to set the option matching the current branch
+    Array.from(storeSelect.options).forEach(opt => {
+      if (String(opt.value) === String(branchId)) storeSelect.value = opt.value;
+    });
+  }
+
+  // Populate transfer branch selectors if present
+  const fromSel = document.getElementById('mov-from-branch');
+  const toSel = document.getElementById('mov-to-branch');
+  if (fromSel || toSel) {
+    try {
+      const bRes = await apiGet('/api/branches');
+      const branches = bRes.data || [];
+      const branchOpts = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+      if (fromSel) {
+        fromSel.innerHTML = branchOpts;
+        if (branchId && branchId !== 'all') fromSel.value = String(branchId);
+      }
+      if (toSel) {
+        toSel.innerHTML = branches.filter(b => String(b.id) !== String(branchId)).map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+      }
+    } catch (e) {}
+  }
+
+  // Toggle transfer fields based on type
+  toggleTransferFields();
+
   document.getElementById('stock-movement-modal')?.classList.remove('hidden');
+}
+
+function toggleTransferFields() {
+  const type = document.getElementById('mov-type-select')?.value;
+  const transferFields = document.getElementById('mov-transfer-fields');
+  const standardFields = document.getElementById('mov-standard-fields');
+  if (transferFields) transferFields.style.display = (type === 'TRANSFER') ? 'grid' : 'none';
+  if (standardFields) standardFields.style.display = (type === 'TRANSFER') ? 'none' : 'grid';
 }
 
 async function searchMovProducts(queryStr) {
@@ -2230,7 +2682,9 @@ async function searchMovProducts(queryStr) {
   // If cache is empty, try to load from API first
   if (!_movProductsCache.length) {
     try {
-      const data = await apiGet('/api/inventory');
+      const branchId = state.currentBranch && state.currentBranch.id ? state.currentBranch.id : null;
+      const invUrl = (branchId && branchId !== 'all') ? `/api/inventory?branch_id=${branchId}` : '/api/inventory';
+      const data = await apiGet(invUrl);
       if (data && data.data && data.data.length) {
         _movProductsCache = data.data;
       }
@@ -2250,7 +2704,7 @@ async function searchMovProducts(queryStr) {
   );
 
   if (!matches.length) {
-    box.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted);text-align:center;">No matching products found</div>';
+    box.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted);text-align:center;">No matching products found in this branch</div>';
     box.classList.remove('hidden');
     return;
   }
@@ -2315,6 +2769,49 @@ async function submitStockMovementModal() {
     return;
   }
 
+  // Inter-branch transfer handling
+  if (movement_type === 'TRANSFER') {
+    const from_branch_id = parseInt(document.getElementById('mov-from-branch')?.value);
+    const to_branch_id = parseInt(document.getElementById('mov-to-branch')?.value);
+
+    if (!from_branch_id || !to_branch_id || from_branch_id === to_branch_id) {
+      showToast('Please select distinct Source and Destination branches for transfer');
+      return;
+    }
+    if (!prodId) {
+      showToast('Please select a valid product from the source branch');
+      return;
+    }
+
+    const payload = {
+      product_id: prodId,
+      product_name: prodName,
+      sku: prodSku || '',
+      movement_type: 'TRANSFER',
+      qty_change: qtyVal,
+      from_branch_id,
+      to_branch_id,
+      reason: reason || (ref ? `Ref: ${ref}` : '')
+    };
+
+    try {
+      const res = await apiPost('/api/stock-movements', payload);
+      if (res.success) {
+        showToast(res.message || 'Inter-branch stock transfer completed!');
+        closeModal('stock-movement-modal');
+        loadStockMovements();
+        loadInventory();
+        loadPOSProducts();
+      } else {
+        showToast(res.error || 'Transfer failed');
+      }
+    } catch (e) {
+      showToast('Error executing branch transfer');
+      console.error('[submitStockMovementModal] transfer error:', e);
+    }
+    return;
+  }
+
   const isDecrease = ['SALE', 'DAMAGE', 'EXPIRY', 'ADJUSTMENT'].includes(movement_type.toUpperCase());
   const qty_change = isDecrease ? -Math.abs(qtyVal) : Math.abs(qtyVal);
 
@@ -2325,7 +2822,8 @@ async function submitStockMovementModal() {
     movement_type,
     qty_change,
     reason: reason || (ref ? `Ref: ${ref}` : ''),
-    branch_name
+    branch_name,
+    branch_id: state.currentBranch && state.currentBranch.id !== 'all' ? state.currentBranch.id : 1
   };
 
   try {
@@ -2495,6 +2993,18 @@ async function openProductModal(id = null) {
     supSelect.value = '';
   }
 
+  // Populate branches dropdown
+  const branchSelect = document.getElementById('prod-branch-id');
+  if (branchSelect) {
+    try {
+      const bRes = await apiGet('/api/branches');
+      const branches = bRes.data || [];
+      branchSelect.innerHTML = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+      const defaultBranch = (state.currentBranch && state.currentBranch.id && state.currentBranch.id !== 'all') ? state.currentBranch.id : 1;
+      branchSelect.value = String(defaultBranch);
+    } catch (_) {}
+  }
+
   // Clear/reset all fields
   const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val; };
   setVal('prod-id', '');
@@ -2524,6 +3034,7 @@ async function openProductModal(id = null) {
         setVal('prod-sku', p.sku || '');
         setVal('prod-cat-id', p.category_id ? String(p.category_id) : (_categoriesCache.length ? String(_categoriesCache[0].id) : ''));
         if (supSelect) supSelect.value = p.supplier_id ? String(p.supplier_id) : '';
+        if (branchSelect && p.branch_id) branchSelect.value = String(p.branch_id);
         setVal('prod-image-url', p.image_url || '');
         onProductImageUrlChange(p.image_url || '');
         setVal('prod-buy-price', p.buy_price || '');
@@ -2551,6 +3062,7 @@ async function submitProductModal() {
   const catSelectVal = document.getElementById('prod-cat-id').value;
   const newCatName = (document.getElementById('prod-new-cat-name')?.value || '').trim();
   const supplier_id = document.getElementById('prod-supplier-id')?.value ? parseInt(document.getElementById('prod-supplier-id').value) : null;
+  const branch_id = document.getElementById('prod-branch-id')?.value ? parseInt(document.getElementById('prod-branch-id').value) : null;
   const image_url = document.getElementById('prod-image-url')?.value.trim() || null;
   const buy_price = parseFloat(document.getElementById('prod-buy-price').value) || 0;
   const sell_price = parseFloat(document.getElementById('prod-sell-price').value);
@@ -2576,8 +3088,12 @@ async function submitProductModal() {
     new_category = newCatName;
   }
 
+  // Use selected branch or active session branch
+  const activeBranchId = branch_id || ((state.currentBranch && state.currentBranch.id && state.currentBranch.id !== 'all') ? state.currentBranch.id : 1);
+
   const payload = {
-    name, sku, category_id, new_category, supplier_id, image_url, buy_price, sell_price, stock_qty, unit, reorder_level, expiry_date
+    name, sku, category_id, new_category, supplier_id, image_url, buy_price, sell_price, stock_qty, unit, reorder_level, expiry_date,
+    branch_id: activeBranchId
   };
 
   try {
@@ -5389,12 +5905,31 @@ function renderBranchSwitcherModal(branches = []) {
   if (!container) return;
   const activeBranches = branches.length ? branches : [{ id: 1, name: 'Main Branch', location: 'Headquarters Store' }];
 
-  container.innerHTML = activeBranches.map(b => `
-    <div class="branch-opt-card" onclick="selectBranch('${(b.name || '').replace(/'/g, "\\'")}')">
-      <strong>${b.name}</strong>
-      <span>${b.location || 'Branch Store'}</span>
+  let html = '';
+
+  // If user is Owner, add the special Enterprise Overview option at the top!
+  if (state.user?.role === 'owner') {
+    html += `
+      <div class="branch-opt-card" onclick="selectBranch('All Branches (HQ Overview)', 'all')" style="border-left: 4px solid var(--brand); background: var(--surface-2); margin-bottom: 8px; cursor: pointer; padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <strong style="font-size:13.5px;color:var(--text-primary);display:block;">All Branches (HQ Overview)</strong>
+            <span style="font-size:11.5px;color:var(--text-muted);">Consolidated Enterprise Performance &amp; Comparison</span>
+          </div>
+          <span class="badge" style="background:var(--brand);color:#fff;font-size:9.5px;font-weight:700;padding:2px 7px;">OWNER ONLY</span>
+        </div>
+      </div>
+    `;
+  }
+
+  html += activeBranches.map(b => `
+    <div class="branch-opt-card" onclick="selectBranch('${(b.name || '').replace(/'/g, "\\'")}', ${b.id})" style="cursor: pointer; padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 6px;">
+      <strong style="font-size:13px;color:var(--text-primary);">${b.name}</strong><br>
+      <span style="font-size:11.5px;color:var(--text-muted);">${b.location || 'Branch Store'}</span>
     </div>
   `).join('');
+
+  container.innerHTML = html;
 }
 
 function populateZReportBranchSelects(branches = []) {
@@ -5477,16 +6012,12 @@ async function deleteBranch(id) {
 
 /* BRANCH & MODAL HANDLERS */
 function openBranchModal() {
-  renderBranchSwitcherModal(state.branchesCache || []);
-  document.getElementById('branch-modal')?.classList.remove('hidden');
-}
-
-function openBranchModal() {
   // Only owners can switch branches
   if (state.user && state.user.role !== 'owner') {
     showToast('Branch locked to your assigned work location');
     return;
   }
+  renderBranchSwitcherModal(state.branchesCache || []);
   document.getElementById('branch-modal')?.classList.remove('hidden');
 }
 
@@ -5500,9 +6031,39 @@ function selectBranch(branchName, branchId = null) {
   const el = document.getElementById('branch-name');
   if (el) el.textContent = branchName;
   const statusEl = document.querySelector('.branch-status');
-  if (statusEl) statusEl.textContent = 'Online · All Access';
+  if (statusEl) {
+    statusEl.textContent = branchId === 'all' ? 'Online · Enterprise HQ' : 'Online · All Access';
+  }
   closeModal('branch-modal');
   showToast(`Switched active branch to ${branchName}`);
+
+  // Re-evaluate sidebar navigation permissions for HQ Mode vs Branch Mode
+  applyRolePermissions();
+
+  const isHQ = branchId === 'all';
+  const hqViews = ['dashboard', 'branch-comparison', 'ai', 'settings'];
+
+  // If in HQ mode and on a branch-only operational page, redirect to dashboard
+  if (isHQ && !hqViews.includes(state.currentView)) {
+    navTo('dashboard');
+    return;
+  }
+  // If in Branch mode and on branch-comparison (an HQ-only page), redirect to dashboard
+  if (!isHQ && state.currentView === 'branch-comparison') {
+    navTo('dashboard');
+    return;
+  }
+
+  // Refresh active view data immediately for the new branch context
+  if (state.currentView === 'dashboard' || !state.currentView) {
+    loadDashboardKPIs();
+  } else if (state.currentView === 'branch-comparison') {
+    loadBranchComparisonView();
+  } else if (state.currentView === 'sales') {
+    loadPOSProducts();
+  } else if (state.currentView === 'inventory') {
+    loadInventory();
+  }
 }
 
 function openCmdModal() {

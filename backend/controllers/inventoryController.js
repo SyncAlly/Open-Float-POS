@@ -4,16 +4,26 @@ const { downloadAndSaveImage } = require('../utils/imageDownloader');
 async function getProducts(req, res) {
   try {
     const db = await getDb();
-    const { category, status, search } = req.query;
+    const { category, status, search, branch_id } = req.query;
 
     let sql = `
-      SELECT p.*, c.name AS category_name, s.name AS supplier_name
+      SELECT p.*, c.name AS category_name, s.name AS supplier_name, b.name AS branch_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN suppliers  s ON p.supplier_id = s.id
+      LEFT JOIN branches   b ON p.branch_id = b.id
       WHERE p.is_active = 1
     `;
     const params = [];
+
+    // Filter strictly by branch if provided and not 'all'
+    if (branch_id && branch_id !== 'all') {
+      sql += ' AND p.branch_id = ?';
+      params.push(branch_id);
+    } else if (!branch_id && req.user && req.user.role !== 'owner' && req.user.branch_id) {
+      sql += ' AND p.branch_id = ?';
+      params.push(req.user.branch_id);
+    }
 
     if (category) { sql += ' AND c.slug = ?'; params.push(category); }
     if (search)   { sql += ' AND (p.name LIKE ? OR p.sku LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
@@ -33,10 +43,11 @@ async function getProduct(req, res) {
   try {
     const db = await getDb();
     const rows = query(db,
-      `SELECT p.*, c.name AS category_name, s.name AS supplier_name
+      `SELECT p.*, c.name AS category_name, s.name AS supplier_name, b.name AS branch_name
        FROM products p
        LEFT JOIN categories c ON p.category_id = c.id
        LEFT JOIN suppliers  s ON p.supplier_id = s.id
+       LEFT JOIN branches   b ON p.branch_id = b.id
        WHERE p.id = ?`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Product not found.' });
     res.json({ success: true, data: rows[0] });
@@ -72,6 +83,14 @@ async function createProduct(req, res) {
       return res.status(400).json({ error: 'name, sku, and sell_price are required.' });
     }
 
+    const resolvedBranchId = parseInt(branch_id) || (req.user ? req.user.branch_id : 1) || 1;
+
+    // Check if product with same SKU already exists for this specific branch
+    const existing = query(db, 'SELECT id FROM products WHERE sku = ? AND branch_id = ? AND is_active = 1', [sku, resolvedBranchId]);
+    if (existing.length > 0) {
+      return res.status(409).json({ error: `A product with SKU '${sku}' already exists in this branch.` });
+    }
+
     const resolvedCatId = await getOrCreateCategoryId(db, category_id, new_category || category_name);
     // Fetch and save image locally into ./uploads/products/
     const localImagePath = image_url ? await downloadAndSaveImage(image_url, sku) : null;
@@ -82,9 +101,9 @@ async function createProduct(req, res) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [name, sku, resolvedCatId, buy_price || 0, sell_price,
        stock_qty || 0, reorder_level || 10, unit || 'pcs',
-       supplier_id || null, expiry_date || null, branch_id || null, localImagePath]);
+       supplier_id || null, expiry_date || null, resolvedBranchId, localImagePath]);
 
-    res.status(201).json({ success: true, id: result.lastInsertRowid, category_id: resolvedCatId, message: 'Product created.' });
+    res.status(201).json({ success: true, id: result.lastInsertRowid, category_id: resolvedCatId, branch_id: resolvedBranchId, message: 'Product created.' });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'SKU already exists.' });
     res.status(500).json({ error: err.message });
@@ -108,7 +127,7 @@ async function updateProduct(req, res) {
     }
 
     const allowed = ['name','sku','category_id','buy_price','sell_price','stock_qty',
-                     'reorder_level','unit','supplier_id','expiry_date','is_active','image_url'];
+                     'reorder_level','unit','supplier_id','expiry_date','is_active','image_url','branch_id'];
     const sets = Object.keys(fields).filter(k => allowed.includes(k));
 
     if (!sets.length) return res.status(400).json({ error: 'No valid fields to update.' });

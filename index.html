@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=20260827" />
+  <link rel="stylesheet" href="css/style.css?v=20260828c" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -88,6 +88,11 @@
         <a class="nav-item active" data-view="dashboard">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" fill="currentColor" opacity=".8"/><rect x="11" y="2" width="7" height="7" rx="1.5" fill="currentColor" opacity=".8"/><rect x="2" y="11" width="7" height="7" rx="1.5" fill="currentColor" opacity=".8"/><rect x="11" y="11" width="7" height="7" rx="1.5" fill="currentColor" opacity=".8"/></svg>
           <span>Dashboard</span>
+        </a>
+        <a class="nav-item" data-view="branch-comparison" id="nav-branch-comparison">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M3 17V10M8 17V4M13 17V8M18 17v-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="8" cy="4" r="1.5" fill="currentColor"/></svg>
+          <span>Branch Comparison</span>
+          <span class="nav-badge" style="background:var(--brand);color:#fff;">HQ</span>
         </a>
         <a class="nav-item" data-view="sales">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M3 6h14M6 10h8M8 14h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -409,6 +414,125 @@
           </div>
           <div class="approvals-grid" id="dash-approvals-grid">
             <div style="padding:12px;color:var(--text-muted);font-size:12px">Loading approvals...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════ VIEW: BRANCH COMPARISON (OWNER ONLY) ════════════ -->
+      <div id="view-branch-comparison" class="view">
+        <div class="view-header">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span class="badge" style="background:var(--brand);color:#fff;font-weight:700;font-size:10.5px;padding:3px 8px;">ENTERPRISE HQ</span>
+              <h1 style="margin:0;">Multi-Branch Performance Comparison</h1>
+            </div>
+            <p>Cross-location benchmarking and analytics across Sales, HR, Inventory &amp; Financials</p>
+          </div>
+          <div class="view-actions">
+            <button class="btn-sm secondary" onclick="loadBranchComparisonView()">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1 7a6 6 0 1011.3-2.8M13 1v4H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Refresh
+            </button>
+            <button class="btn-sm" onclick="window.print()">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 5V2h8v3M3 10H2a1 1 0 01-1-1V6a1 1 0 011-1h10a1 1 0 011 1v3a1 1 0 01-1 1h-1M3 8h8v4H3V8z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Export Report
+            </button>
+          </div>
+        </div>
+
+        <!-- AREA SELECTOR TABS -->
+        <div class="cat-tabs" style="margin-bottom:18px;">
+          <button class="cat-tab active" id="tab-comp-sales" onclick="switchComparisonArea('sales')">Sales &amp; Revenue</button>
+          <button class="cat-tab" id="tab-comp-hr" onclick="switchComparisonArea('hr')">Staff &amp; Productivity</button>
+          <button class="cat-tab" id="tab-comp-inventory" onclick="switchComparisonArea('inventory')">Inventory &amp; Stock</button>
+          <button class="cat-tab" id="tab-comp-channels" onclick="switchComparisonArea('channels')">Payment Channels</button>
+        </div>
+
+        <!-- 4 SUMMARY BENCHMARK CARDS -->
+        <div class="kpi-grid" style="margin-bottom:20px;">
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Enterprise Revenue</span><div class="kpi-icon blue"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M3 5h7a3 3 0 010 6H3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div></div>
+            <div class="kpi-value" id="comp-total-rev">KES 0</div>
+            <div class="kpi-trend up">Live across all branches</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Top Performing Location</span><div class="kpi-icon green"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 12L6 7l3 3 5-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div></div>
+            <div class="kpi-value" id="comp-top-branch" style="font-size:18px;">—</div>
+            <div class="kpi-trend up" id="comp-top-branch-rev">Leading revenue share</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Total Enterprise Staff</span><div class="kpi-icon purple"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.5"/></svg></div></div>
+            <div class="kpi-value" id="comp-total-staff">0</div>
+            <div class="kpi-trend up" id="comp-avg-attendance">Avg attendance: 0%</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Total Inventory Holding</span><div class="kpi-icon amber"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="5" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg></div></div>
+            <div class="kpi-value" id="comp-total-inv">KES 0</div>
+            <div class="kpi-trend down" id="comp-total-low-stock">0 low stock alerts</div>
+          </div>
+        </div>
+
+        <!-- MAIN INTERACTIVE VISUAL CHART SECTION -->
+        <div class="panel-card" style="margin-bottom:20px;padding:20px;">
+          <div class="chart-card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+            <div>
+              <h3 id="comp-chart-title" style="margin:0;font-size:16px;">Cross-Branch Revenue Comparison</h3>
+              <p id="comp-chart-subtitle" style="font-size:12px;color:var(--text-muted);margin-top:2px;">Comparing performance across all registered business locations</p>
+            </div>
+            <div class="chart-actions" style="display:flex;gap:8px;align-items:center;">
+              <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px;" id="comp-metric-pills">
+                <button class="chart-tab active" id="btn-comp-m1" onclick="setCompPageMetric('m1')">Revenue</button>
+                <button class="chart-tab" id="btn-comp-m2" onclick="setCompPageMetric('m2')">Orders</button>
+                <button class="chart-tab" id="btn-comp-m3" onclick="setCompPageMetric('m3')">Avg Order</button>
+              </div>
+              <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px;">
+                <button class="chart-tab active" id="btn-comp-chart-bar" onclick="setCompPageChartType('bar')">Bar</button>
+                <button class="chart-tab" id="btn-comp-chart-line" onclick="setCompPageChartType('line')">Line</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:16px;">
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;height:340px;position:relative;">
+              <canvas id="compPageMainChart"></canvas>
+            </div>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+              <h4 id="comp-donut-title" style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Contribution Share</h4>
+              <div style="width:100%;height:220px;position:relative;"><canvas id="compPageDonutChart"></canvas></div>
+              <div id="comp-page-donut-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;justify-content:center;font-size:11px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BENCHMARK MATRIX DATA TABLE -->
+        <div class="panel-card" style="padding:20px;">
+          <div class="panel-header" style="margin-bottom:16px;">
+            <div>
+              <h3 style="margin:0;">Branch Benchmarking Matrix</h3>
+              <p style="font-size:12px;color:var(--text-muted);margin-top:2px;">Detailed multi-attribute performance table for all operational stores</p>
+            </div>
+            <span class="badge badge-green" id="comp-branch-count-badge">0 Locations</span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="data-table" style="width:100%;">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Branch Name</th>
+                  <th>Location</th>
+                  <th>Staff Headcount</th>
+                  <th>Attendance Rate</th>
+                  <th>Total Revenue</th>
+                  <th>Transactions</th>
+                  <th>Avg Order Value</th>
+                  <th>Stock Value</th>
+                  <th>Performance Rating</th>
+                </tr>
+              </thead>
+              <tbody id="comp-matrix-tbody">
+                <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-muted);">Loading comparative branch matrix...</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1525,7 +1649,8 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
             <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Movement Type</label>
-            <select class="form-field-input" id="mov-type-select" style="width:100%;margin-top:4px;">
+            <select class="form-field-input" id="mov-type-select" style="width:100%;margin-top:4px;" onchange="toggleTransferFields()">
+              <option value="TRANSFER">Transfer to Another Branch Warehouse</option>
               <option value="RETURN">Customer Return (+Qty)</option>
               <option value="DAMAGE">Damaged / Written Off (-Qty)</option>
               <option value="EXPIRY">Expired Product (-Qty)</option>
@@ -1538,7 +1663,21 @@
             <input type="number" class="form-field-input" id="mov-qty" placeholder="e.g. 5" style="width:100%;margin-top:4px;" min="1" value="1" />
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div id="mov-transfer-fields" style="display:none;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text-muted);">From Branch (Source)</label>
+            <select class="form-field-input" id="mov-from-branch" style="width:100%;margin-top:4px;">
+              <option value="1">Main Branch</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text-muted);">To Branch (Destination)</label>
+            <select class="form-field-input" id="mov-to-branch" style="width:100%;margin-top:4px;">
+              <option value="2">Westlands Branch</option>
+            </select>
+          </div>
+        </div>
+        <div id="mov-standard-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
             <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Store / Warehouse</label>
             <select class="form-field-input" id="mov-store-select" style="width:100%;margin-top:4px;">
@@ -1552,7 +1691,7 @@
         </div>
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Reason / Operational Note</label>
-          <input type="text" class="form-field-input" id="mov-notes" placeholder="e.g. Customer returned damaged seal" style="width:100%;margin-top:4px;" />
+          <input type="text" class="form-field-input" id="mov-notes" placeholder="e.g. Customer returned damaged seal or branch restock" style="width:100%;margin-top:4px;" />
         </div>
       </div>
       <div class="modal-foot" style="gap:8px;margin-top:16px;">
@@ -1586,7 +1725,15 @@
       <div class="modal-head"><h3 id="product-modal-title">Add New Product</h3><button class="modal-close" onclick="closeModal('product-modal')"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
       <div style="display:flex;flex-direction:column;gap:10px;">
         <input type="hidden" id="prod-id" />
-        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Product Name</label><input type="text" class="form-field-input" id="prod-name" placeholder="e.g. Milk Powder 400g" style="width:100%;margin-top:4px;" /></div>
+        <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:10px;">
+          <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Product Name</label><input type="text" class="form-field-input" id="prod-name" placeholder="e.g. Milk Powder 400g" style="width:100%;margin-top:4px;" /></div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Branch / Warehouse</label>
+            <select class="form-field-input" id="prod-branch-id" style="width:100%;margin-top:4px;">
+              <option value="1">Main Branch</option>
+            </select>
+          </div>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">SKU / Code</label><input type="text" class="form-field-input" id="prod-sku" placeholder="MILK-400G" style="width:100%;margin-top:4px;" /></div>
           <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Category</label>

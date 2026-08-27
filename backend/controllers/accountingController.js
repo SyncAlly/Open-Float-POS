@@ -5,23 +5,37 @@ const { getDb, query, exec } = require('../db/database');
 async function getFinancialOverview(req, res) {
   try {
     const db = await getDb();
+    const { branch_id } = req.query;
+    const isBranchScoped = branch_id && branch_id !== 'all';
 
     // Total sales revenue
-    const revRow = query(db, "SELECT COALESCE(SUM(total), 0) AS total_revenue FROM transactions WHERE status = 'completed'");
+    const revSql = isBranchScoped
+      ? "SELECT COALESCE(SUM(total), 0) AS total_revenue FROM transactions WHERE status = 'completed' AND branch_id = ?"
+      : "SELECT COALESCE(SUM(total), 0) AS total_revenue FROM transactions WHERE status = 'completed'";
+    const revRow = query(db, revSql, isBranchScoped ? [branch_id] : []);
     const totalRevenue = revRow[0].total_revenue;
 
     // Total inventory COGS value
-    const cogsRow = query(db, "SELECT COALESCE(SUM(stock_qty * buy_price), 0) AS total_cogs FROM products WHERE is_active = 1");
+    const cogsSql = isBranchScoped
+      ? "SELECT COALESCE(SUM(stock_qty * buy_price), 0) AS total_cogs FROM products WHERE is_active = 1 AND (branch_id = ? OR branch_id IS NULL)"
+      : "SELECT COALESCE(SUM(stock_qty * buy_price), 0) AS total_cogs FROM products WHERE is_active = 1";
+    const cogsRow = query(db, cogsSql, isBranchScoped ? [branch_id] : []);
     const totalCOGS = cogsRow[0].total_cogs;
 
     // Total recorded expenses from journal entries
-    const expRow = query(db, "SELECT COALESCE(SUM(amount), 0) AS total_expenses FROM journal_entries WHERE type = 'expense'");
+    const expSql = isBranchScoped
+      ? "SELECT COALESCE(SUM(amount), 0) AS total_expenses FROM journal_entries WHERE type = 'expense' AND (branch_id = ? OR branch_id IS NULL)"
+      : "SELECT COALESCE(SUM(amount), 0) AS total_expenses FROM journal_entries WHERE type = 'expense'";
+    const expRow = query(db, expSql, isBranchScoped ? [branch_id] : []);
     const totalExpenses = expRow[0].total_expenses;
 
     const netProfit = totalRevenue - (totalExpenses + (totalRevenue * 0.4)); // Estimated gross margin basis
 
     // Outstanding Accounts Receivable (AR) from customer credits
-    const arRow = query(db, "SELECT COALESCE(SUM(credit_balance), 0) AS total_ar FROM customers");
+    const arSql = isBranchScoped
+      ? "SELECT COALESCE(SUM(credit_balance), 0) AS total_ar FROM customers WHERE (branch_id = ? OR branch_id IS NULL)"
+      : "SELECT COALESCE(SUM(credit_balance), 0) AS total_ar FROM customers";
+    const arRow = query(db, arSql, isBranchScoped ? [branch_id] : []);
 
     res.json({
       success: true,

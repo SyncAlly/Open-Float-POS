@@ -97,7 +97,7 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS products (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       name          TEXT NOT NULL,
-      sku           TEXT NOT NULL UNIQUE,
+      sku           TEXT NOT NULL,
       category_id   INTEGER,
       buy_price     REAL NOT NULL DEFAULT 0,
       sell_price    REAL NOT NULL DEFAULT 0,
@@ -108,7 +108,7 @@ function createTables() {
       expiry_date   TEXT,
       image_url     TEXT,
       is_active     INTEGER DEFAULT 1,
-      branch_id     INTEGER,
+      branch_id     INTEGER DEFAULT 1,
       created_at    TEXT DEFAULT (datetime('now')),
       updated_at    TEXT DEFAULT (datetime('now'))
     );
@@ -297,13 +297,49 @@ function createTables() {
       created_at    TEXT DEFAULT (datetime('now'))
     );
   `);
-  // Ensure image_url column exists for existing databases
+  // Migrations for existing databases
+  try { _db.run("ALTER TABLE products ADD COLUMN image_url TEXT"); } catch (e) {}
+  try { _db.run("ALTER TABLE products ADD COLUMN branch_id INTEGER DEFAULT 1"); } catch (e) {}
+  try { _db.run("UPDATE products SET branch_id = 1 WHERE branch_id IS NULL"); } catch (e) {}
+  try { _db.run("ALTER TABLE stock_movements ADD COLUMN branch_id INTEGER DEFAULT 1"); } catch (e) {}
+  try { _db.run("ALTER TABLE stock_movements ADD COLUMN from_branch_id INTEGER"); } catch (e) {}
+  try { _db.run("ALTER TABLE stock_movements ADD COLUMN to_branch_id INTEGER"); } catch (e) {}
+
+  // Migrate products table if it still has old global UNIQUE(sku) constraint
   try {
-    _db.run("ALTER TABLE products ADD COLUMN image_url TEXT");
-    persist();
-  } catch (e) {
-    // Column already exists
+    const tableInfo = query(_db, "SELECT sql FROM sqlite_master WHERE type='table' AND name='products'");
+    if (tableInfo.length > 0 && tableInfo[0].sql && tableInfo[0].sql.includes('sku') && tableInfo[0].sql.includes('UNIQUE')) {
+      _db.run(`
+        CREATE TABLE products_v2 (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          name          TEXT NOT NULL,
+          sku           TEXT NOT NULL,
+          category_id   INTEGER,
+          buy_price     REAL NOT NULL DEFAULT 0,
+          sell_price    REAL NOT NULL DEFAULT 0,
+          stock_qty     INTEGER NOT NULL DEFAULT 0,
+          reorder_level INTEGER NOT NULL DEFAULT 10,
+          unit          TEXT DEFAULT 'pcs',
+          supplier_id   INTEGER,
+          expiry_date   TEXT,
+          image_url     TEXT,
+          is_active     INTEGER DEFAULT 1,
+          branch_id     INTEGER DEFAULT 1,
+          created_at    TEXT DEFAULT (datetime('now')),
+          updated_at    TEXT DEFAULT (datetime('now'))
+        );
+        INSERT INTO products_v2 (id, name, sku, category_id, buy_price, sell_price, stock_qty, reorder_level, unit, supplier_id, expiry_date, image_url, is_active, branch_id, created_at, updated_at)
+        SELECT id, name, sku, category_id, buy_price, sell_price, stock_qty, reorder_level, unit, supplier_id, expiry_date, image_url, is_active, COALESCE(branch_id, 1), created_at, updated_at FROM products;
+        DROP TABLE products;
+        ALTER TABLE products_v2 RENAME TO products;
+      `);
+      console.log('[DB] Migrated products table to allow identical SKUs across independent branches.');
+    }
+  } catch (err) {
+    console.warn('[DB] Products table migration notice:', err.message);
   }
+
+  persist();
   console.log('[DB] Tables ready.');
 }
 
