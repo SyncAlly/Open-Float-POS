@@ -5,7 +5,8 @@ const { getDb, query, exec } = require('../db/database');
 async function processCheckout(req, res) {
   try {
     const db = await getDb();
-    const { customer_id, items, discount, vat_rate, payment_method, notes, branch_id } = req.body;
+    const { customer_id, items, discount, vat_rate, payment_method, notes } = req.body;
+    let branch_id = req.body.branch_id;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Order must contain at least one item.' });
@@ -18,6 +19,7 @@ async function processCheckout(req, res) {
 
     let subtotal = 0;
     const verifiedItems = [];
+    let inferredProductBranchId = null;
 
     // Verify product availability & price integrity
     for (const item of items) {
@@ -30,19 +32,29 @@ async function processCheckout(req, res) {
         return res.status(400).json({ error: `Insufficient stock for '${prod.name}'. In stock: ${prod.stock_qty}, requested: ${item.qty}` });
       }
 
+      if (!inferredProductBranchId && prod.branch_id) {
+        inferredProductBranchId = prod.branch_id;
+      }
+
       const itemDiscount = item.discount || 0;
       const lineTotal = (prod.sell_price * item.qty) - itemDiscount;
       subtotal += lineTotal;
 
       verifiedItems.push({
         product_id: prod.id,
+        name: prod.name,
+        sku: prod.sku,
         qty: item.qty,
         unit_price: prod.sell_price,
         discount: itemDiscount,
         line_total: lineTotal,
-        current_stock: prod.stock_qty
+        current_stock: prod.stock_qty,
+        branch_id: prod.branch_id
       });
     }
+
+    // Determine target branch strictly
+    const finalBranchId = branch_id || inferredProductBranchId || (req.user ? req.user.branch_id : 1) || 1;
 
     const appliedDiscount = discount || 0;
     const rate = vat_rate !== undefined ? vat_rate : 16;
@@ -53,13 +65,18 @@ async function processCheckout(req, res) {
     const txResult = exec(db,
       `INSERT INTO transactions (ref, customer_id, cashier_id, branch_id, subtotal, discount, vat, total, payment_method, status, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)`,
-      [ref, customer_id || null, req.user ? req.user.id : null, branch_id || (req.user ? req.user.branch_id : 1),
+      [ref, customer_id || null, req.user ? req.user.id : null, finalBranchId,
        subtotal, appliedDiscount, vat, total, payment_method || 'cash', notes || null]
     );
 
     const transactionId = txResult.lastInsertRowid;
 
-    // Insert line items & decrement stock
+    // Get branch name for logging
+    const bRows = query(db, 'SELECT name FROM branches WHERE id = ?', [finalBranchId]);
+    const branchName = bRows.length ? bRows[0].name : 'Branch Store';
+    const cashierName = req.user ? req.user.name : 'Cashier';
+
+    // Insert line items, decrement stock & log movement
     for (const vItem of verifiedItems) {
       exec(db,
         `INSERT INTO transaction_items (transaction_id, product_id, qty, unit_price, discount, line_total)
@@ -68,6 +85,17 @@ async function processCheckout(req, res) {
       );
 
       exec(db, 'UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?', [vItem.qty, vItem.product_id]);
+
+      try {
+        const movRef = `MOV-${Math.floor(1000 + Math.random() * 9000)}`;
+        exec(db,
+          `INSERT INTO stock_movements (ref, product_id, product_name, sku, movement_type, qty_change, reason, recorded_by, branch_name, branch_id)
+           VALUES (?, ?, ?, ?, 'SALE', ?, ?, ?, ?, ?)`,
+          [movRef, vItem.product_id, vItem.name, vItem.sku || '', -vItem.qty, `Sale Ref: ${ref}`, cashierName, branchName, finalBranchId]
+        );
+      } catch (movErr) {
+        // Non-fatal movement log notice
+      }
     }
 
     // Award loyalty points (1 point per 100 KES spent) if registered customer
@@ -82,6 +110,7 @@ async function processCheckout(req, res) {
       success: true,
       ref,
       transaction_id: transactionId,
+      branch_id: finalBranchId,
       subtotal,
       discount: appliedDiscount,
       vat,
@@ -98,7 +127,12 @@ async function processCheckout(req, res) {
 async function getTransactions(req, res) {
   try {
     const db = await getDb();
-    const { branch_id, customer_id, payment_method, limit } = req.query;
+    let { branch_id, customer_id, payment_method, limit } = req.query;
+
+    // If cashier or manager, enforce their assigned branch
+    if (req.user && req.user.role !== 'owner' && req.user.branch_id) {
+      branch_id = req.user.branch_id;
+    }
 
     let sql = `
       SELECT t.*, u.name AS cashier_name, c.name AS customer_name, b.name AS branch_name
@@ -109,12 +143,12 @@ async function getTransactions(req, res) {
       WHERE 1=1
     `;
     const params = [];
-    if (branch_id)      { sql += ' AND t.branch_id = ?'; params.push(branch_id); }
-    if (customer_id)    { sql += ' AND t.customer_id = ?'; params.push(customer_id); }
-    if (payment_method) { sql += ' AND t.payment_method = ?'; params.push(payment_method); }
+    if (branch_id && branch_id !== 'all') { sql += ' AND t.branch_id = ?'; params.push(branch_id); }
+    if (customer_id)                      { sql += ' AND t.customer_id = ?'; params.push(customer_id); }
+    if (payment_method)                   { sql += ' AND t.payment_method = ?'; params.push(payment_method); }
 
     sql += ' ORDER BY t.created_at DESC';
-    sql += ` LIMIT ${parseInt(limit) || 50}`;
+    sql += ` LIMIT ${parseInt(limit) || 200}`;
 
     const txs = query(db, sql, params);
     res.json({ success: true, count: txs.length, data: txs });

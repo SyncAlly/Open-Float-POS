@@ -556,6 +556,168 @@ function updateTime() {
   if (t) t.textContent = new Date().toLocaleTimeString('en-KE', { hour:'2-digit', minute:'2-digit' });
 }
 
+/* VIEW DOM WIPING & BRANCH ISOLATION HELPERS */
+function clearViewDOM(viewId) {
+  const loadingRow = (colspan, label) => 
+    `<tr class="view-loading-row"><td colspan="${colspan}"><span class="spinner-sm"></span> Loading ${label}...</td></tr>`;
+  const loadingBox = (label) => 
+    `<div class="view-loading-box"><span class="spinner-sm"></span> Loading ${label}...</div>`;
+  const setEl = (id, val = '—') => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+  switch (viewId) {
+    case 'dashboard':
+      ['kpi-revenue', 'kpi-profit', 'kpi-transactions', 'kpi-outstanding-ar',
+       'dash-opt-kpi-rev', 'dash-opt-kpi-profit', 'dash-opt-kpi-txs', 'dash-opt-kpi-ar'].forEach(id => setEl(id, '—'));
+      ['kpi-revenue-trend', 'kpi-profit-trend', 'kpi-txn-trend', 'kpi-ar-trend'].forEach(id => setEl(id, 'Updating...'));
+      setHtml('dash-txn-list', loadingBox('transactions'));
+      setHtml('dash-stock-list', loadingBox('stock alerts'));
+      setHtml('dash-branch-list', loadingBox('branch data'));
+      setHtml('dash-approvals-grid', loadingBox('pending approvals'));
+      break;
+
+    case 'sales':
+      setHtml('products-grid', `<div style="grid-column:1/-1;" class="view-loading-box"><span class="spinner-sm"></span> Loading branch catalog...</div>`);
+      break;
+
+    case 'inventory':
+      ['inv-kpi-healthy', 'inv-kpi-reorder', 'inv-kpi-out', 'inv-kpi-dead', 'inv-kpi-expiring'].forEach(id => setEl(id, '—'));
+      setHtml('inventory-tbody', loadingRow(9, 'inventory'));
+      break;
+
+    case 'hr':
+      ['hr-kpi-total', 'hr-kpi-branches', 'hr-kpi-present', 'hr-kpi-rate', 'hr-kpi-payroll', 'hr-kpi-leave', 'hr-kpi-leave-sub'].forEach(id => setEl(id, '—'));
+      setHtml('hr-tbody', loadingRow(7, 'employees'));
+      break;
+
+    case 'crm':
+      ['crm-kpi-total', 'crm-kpi-churn', 'crm-kpi-loyalty', 'crm-kpi-ltv'].forEach(id => setEl(id, '—'));
+      setHtml('crm-tbody', loadingRow(7, 'customers'));
+      setHtml('crm-top-customers', loadingBox('top customers'));
+      break;
+
+    case 'accounting':
+      ['acc-kpi-revenue', 'acc-kpi-expenses', 'acc-kpi-profit', 'acc-kpi-ar'].forEach(id => setEl(id, '—'));
+      setHtml('acc-je-tbody', loadingRow(7, 'journal entries'));
+      setHtml('acc-ar-tbody', loadingRow(4, 'receivables ledger'));
+      setHtml('acc-ap-tbody', loadingRow(4, 'payables ledger'));
+      break;
+
+    case 'procurement':
+      ['pr-kpi-open', 'pr-kpi-approved', 'pr-kpi-spend', 'pr-kpi-delivered'].forEach(id => setEl(id, '—'));
+      setHtml('pr-tbody', loadingRow(8, 'purchase requests'));
+      break;
+
+    case 'logistics':
+      ['del-kpi-active', 'del-kpi-done', 'del-kpi-pending', 'del-kpi-delayed'].forEach(id => setEl(id, '—'));
+      setHtml('del-tbody', loadingRow(8, 'deliveries'));
+      setHtml('del-active-list', loadingBox('active dispatches'));
+      break;
+
+    case 'suppliers':
+      ['sup-kpi-total', 'sup-kpi-active', 'sup-kpi-rating', 'sup-kpi-categories'].forEach(id => setEl(id, '—'));
+      setHtml('sup-tbody', loadingRow(8, 'suppliers'));
+      break;
+
+    case 'hire-purchase':
+      ['hp-kpi-active', 'hp-kpi-collections', 'hp-kpi-overdue', 'hp-kpi-total'].forEach(id => setEl(id, '—'));
+      setHtml('hp-tbody', loadingRow(10, 'agreements'));
+      break;
+
+    case 'receivables':
+      ['ar-kpi-total', 'ar-kpi-b2b', 'ar-kpi-overdue', 'ar-kpi-rate', 'ar-summary-total', 'ar-summary-overdue', 'ar-summary-count', 'ar-summary-rate'].forEach(id => setEl(id, '—'));
+      setHtml('ar-tbody', loadingRow(7, 'debtor accounts'));
+      break;
+
+    case 'services':
+      ['srv-kpi-total', 'srv-kpi-active', 'srv-kpi-rev', 'srv-kpi-avg'].forEach(id => setEl(id, '—'));
+      setHtml('srv-tbody', loadingRow(9, 'services'));
+      break;
+
+    case 'stock-movements':
+      ['sm-kpi-today', 'sm-kpi-returns', 'sm-kpi-damage', 'sm-kpi-adjustments'].forEach(id => setEl(id, '—'));
+      setHtml('sm-tbody', loadingRow(9, 'stock movements'));
+      break;
+
+    case 'z-reports':
+      ['zr-last-amount', 'zr-last-sub', 'zr-prev-amount', 'zr-prev-sub'].forEach(id => setEl(id, '—'));
+      setHtml('z-report-preview', loadingBox('report preview'));
+      break;
+
+    case 'branch-comparison':
+      setHtml('comp-matrix-tbody', loadingRow(9, 'comparison matrix'));
+      break;
+  }
+}
+
+function clearAllViewsDOM() {
+  const views = [
+    'dashboard', 'sales', 'inventory', 'hr', 'crm', 'accounting',
+    'procurement', 'logistics', 'suppliers', 'hire-purchase',
+    'receivables', 'services', 'stock-movements', 'z-reports',
+    'branch-comparison'
+  ];
+  views.forEach(v => clearViewDOM(v));
+
+  // Also clear sales history modal state & table
+  _txnCache = [];
+  ['sh-kpi-count', 'sh-kpi-revenue', 'sh-kpi-cash', 'sh-kpi-mpesa'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+  const txTb = document.getElementById('txn-tbody');
+  if (txTb) txTb.innerHTML = '<tr class="view-loading-row"><td colspan="8"><span class="spinner-sm"></span> Loading branch transactions...</td></tr>';
+}
+
+function triggerViewLoad(viewId) {
+  const curBranchId = state.currentBranch?.id ?? '1';
+  if (!state.viewLoadedBranch) state.viewLoadedBranch = {};
+
+  if (viewId === 'accounting') {
+    initAccountingCharts();
+    loadAccounting().then(() => { state.viewLoadedBranch['accounting'] = curBranchId; });
+  } else if (viewId === 'hr') {
+    initHRCharts();
+    loadHR().then(() => { state.viewLoadedBranch['hr'] = curBranchId; });
+  } else if (viewId === 'procurement') {
+    initProcureCharts();
+    loadProcurement().then(() => { state.viewLoadedBranch['procurement'] = curBranchId; });
+  } else if (viewId === 'logistics') {
+    loadLogistics().then(() => { state.viewLoadedBranch['logistics'] = curBranchId; });
+  } else if (viewId === 'crm') {
+    loadCRM().then(() => { state.viewLoadedBranch['crm'] = curBranchId; });
+  } else if (viewId === 'dashboard') {
+    loadDashboardKPIs().then(() => { state.viewLoadedBranch['dashboard'] = curBranchId; });
+  } else if (viewId === 'inventory') {
+    loadCategories();
+    loadInventory().then(d => {
+      _inventoryCache = d || [];
+      state.viewLoadedBranch['inventory'] = curBranchId;
+    });
+  } else if (viewId === 'sales') {
+    loadCategories();
+    loadPOSProducts().then(() => { state.viewLoadedBranch['sales'] = curBranchId; });
+  } else if (viewId === 'suppliers') {
+    loadSuppliers().then(() => { state.viewLoadedBranch['suppliers'] = curBranchId; });
+  } else if (viewId === 'hire-purchase') {
+    loadHirePurchase().then(() => { state.viewLoadedBranch['hire-purchase'] = curBranchId; });
+  } else if (viewId === 'receivables') {
+    loadReceivables().then(() => { state.viewLoadedBranch['receivables'] = curBranchId; });
+  } else if (viewId === 'services') {
+    loadServices().then(() => { state.viewLoadedBranch['services'] = curBranchId; });
+  } else if (viewId === 'stock-movements') {
+    loadStockMovements().then(() => { state.viewLoadedBranch['stock-movements'] = curBranchId; });
+  } else if (viewId === 'z-reports') {
+    loadZReports().then(() => { state.viewLoadedBranch['z-reports'] = curBranchId; });
+  } else if (viewId === 'ai') {
+    loadAI();
+  } else if (viewId === 'settings') {
+    loadSettings();
+  } else if (viewId === 'branch-comparison') {
+    loadBranchComparisonView().then(() => { state.viewLoadedBranch['branch-comparison'] = curBranchId; });
+  }
+}
+
 /* NAVIGATION */
 function navTo(viewId) {
   if (state.user) {
@@ -574,6 +736,13 @@ function navTo(viewId) {
     }
   }
 
+  // If this view has not yet loaded for the current branch, clear its DOM to loading state
+  const curBranchId = state.currentBranch?.id ?? '1';
+  if (!state.viewLoadedBranch) state.viewLoadedBranch = {};
+  if (state.viewLoadedBranch[viewId] !== curBranchId) {
+    clearViewDOM(viewId);
+  }
+
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.sidebar-nav .nav-item[data-view]').forEach(n => {
     if (n.getAttribute('data-view') === viewId) n.classList.add('active');
@@ -584,26 +753,8 @@ function navTo(viewId) {
   if (targetView) targetView.classList.add('active');
   state.currentView = viewId; // Track active view for context-aware operations
 
-  // Trigger specific view data & charts on navigation
-  setTimeout(() => {
-    if (viewId === 'accounting') { initAccountingCharts(); loadAccounting(); }
-    if (viewId === 'hr') { initHRCharts(); loadHR(); }
-    if (viewId === 'procurement') initProcureCharts();
-    if (viewId === 'logistics') loadLogistics();
-    if (viewId === 'crm') loadCRM();
-    if (viewId === 'dashboard') loadDashboardKPIs();
-    if (viewId === 'inventory') { loadCategories(); loadInventory().then(d => { _inventoryCache = d || []; }); }
-    if (viewId === 'sales') { loadCategories(); loadPOSProducts(); }
-    if (viewId === 'suppliers') loadSuppliers();
-    if (viewId === 'hire-purchase') loadHirePurchase();
-    if (viewId === 'receivables') loadReceivables();
-    if (viewId === 'services') loadServices();
-    if (viewId === 'stock-movements') loadStockMovements();
-    if (viewId === 'z-reports') loadZReports();
-    if (viewId === 'ai') loadAI();
-    if (viewId === 'settings') loadSettings();
-    if (viewId === 'branch-comparison') loadBranchComparisonView();
-  }, 50);
+  // Trigger view data load
+  triggerViewLoad(viewId);
 }
 
 /* SIDEBAR & THEME */
@@ -3579,22 +3730,27 @@ function openSaleHistoryModal() {
 
 async function loadSaleHistory() {
   const tbody = document.getElementById('txn-tbody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">Loading transactions...</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr class="view-loading-row"><td colspan="8"><span class="spinner-sm"></span> Loading branch transactions...</td></tr>';
+  
+  const bId = state.currentBranch?.id;
+  const bParam = bId && bId !== 'all' ? `?branch_id=${bId}&limit=500` : '?limit=500';
+  const subEl = document.getElementById('sh-modal-subtitle');
+  if (subEl) {
+    subEl.textContent = bId && bId !== 'all'
+      ? `Transactions for ${state.currentBranch?.name || 'Active Branch'} · Filter sales performance and itemized receipts`
+      : 'All Branches (Enterprise HQ) Consolidated Sales History';
+  }
+
   try {
-    const data = await apiGet('/api/sales/transactions');
+    const data = await apiGet(`/api/sales/transactions${bParam}`);
     _txnCache = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
     updateSaleHistoryKPIs(_txnCache);
     renderSaleHistory(_txnCache);
-  } catch {
-    // Show demo fallback data if API fails
-    _txnCache = [
-      { id: 1, ref:'TXN-20260805-A101', created_at: new Date().toISOString(), customer_name:'Walk-in', cashier_name:'James Mwangi', payment_method:'cash', subtotal:4500, vat:350, total:4850, status:'completed' },
-      { id: 2, ref:'TXN-20260805-B204', created_at: new Date(Date.now()-3600000).toISOString(), customer_name:'Amina Khalid', cashier_name:'James Mwangi', payment_method:'mpesa', subtotal:33190, vat:5310, total:38500, status:'completed' },
-      { id: 3, ref:'TXN-20260805-C309', created_at: new Date(Date.now()-7200000).toISOString(), customer_name:'Kama Superstore', cashier_name:'David Kamau', payment_method:'credit', subtotal:122410, vat:19590, total:142000, status:'completed' },
-      { id: 4, ref:'TXN-20260804-D412', created_at: new Date(Date.now()-86400000).toISOString(), customer_name:'Walk-in', cashier_name:'James Mwangi', payment_method:'card', subtotal:6206, vat:994, total:7200, status:'completed' },
-    ];
-    updateSaleHistoryKPIs(_txnCache);
-    renderSaleHistory(_txnCache);
+  } catch (e) {
+    console.error('[loadSaleHistory] error:', e);
+    _txnCache = [];
+    updateSaleHistoryKPIs([]);
+    renderSaleHistory([]);
   }
 }
 
@@ -3801,11 +3957,12 @@ function exportSaleHistoryCSV() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `sales_history_${new Date().toISOString().slice(0, 10)}.csv`;
+  const branchSlug = (state.currentBranch?.name || 'all_branches').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  link.download = `sales_history_${branchSlug}_${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  showToast('Sales history exported to CSV');
+  showToast(`Sales history for ${state.currentBranch?.name || 'active branch'} exported`);
 }
 function openHeldOrders() {
   const list = document.getElementById('held-list');
@@ -4139,7 +4296,11 @@ async function processPayment() {
   const cartItemsSnapshot = state.cart.map(i => ({ ...i }));
   const payMethod = state.selectedPayMethod || 'cash';
 
+  const bId = state.currentBranch?.id;
+  const targetBranchId = (bId && bId !== 'all') ? bId : (state.user?.branch_id || 1);
+
   const checkoutPayload = {
+    branch_id: targetBranchId,
     customer_id: custId,
     items: state.cart.map(item => ({
       product_id: item.id,
@@ -6069,8 +6230,8 @@ function selectBranch(branchName, branchId = null) {
     return;
   }
 
-  // ── INSTANT CACHE WIPE ───────────────────────────────────────────────────
-  // Clear ALL module caches immediately so old-branch data never flashes
+  // ── INSTANT CACHE WIPE & FULL DOM PURGE ──────────────────────────────────
+  state.viewLoadedBranch  = {};
   _inventoryCache         = [];
   _movementsCache         = [];
   _suppliersCache         = [];
@@ -6085,53 +6246,13 @@ function selectBranch(branchName, branchId = null) {
   _categoriesCache        = [];
   state.productsCache     = [];
 
-  // Immediately blank out visible table bodies so there's zero stale data shown
-  const tableIds = [
-    'inv-tbody', 'sup-tbody', 'hp-tbody', 'ar-tbody', 'crm-tbody',
-    'hr-tbody', 'del-tbody', 'pr-tbody', 'srv-tbody',
-    'acc-je-tbody', 'movements-tbody'
-  ];
-  tableIds.forEach(tid => {
-    const tbl = document.getElementById(tid);
-    if (tbl) tbl.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-muted);">Switching branch...</td></tr>';
-  });
+  // Wipe EVERY view's tables, lists, and KPIs in the DOM immediately
+  // to ensure zero flash of old branch data when passing through pages
+  clearAllViewsDOM();
   // ────────────────────────────────────────────────────────────────────────
 
   // Refresh active view data immediately for the new branch context
-  const v = state.currentView;
-  if (!v || v === 'dashboard') {
-    loadDashboardKPIs();
-  } else if (v === 'branch-comparison') {
-    loadBranchComparisonView();
-  } else if (v === 'sales') {
-    loadPOSProducts();
-  } else if (v === 'inventory') {
-    loadInventory();
-  } else if (v === 'suppliers') {
-    loadSuppliers();
-  } else if (v === 'hire-purchase') {
-    loadHirePurchase();
-  } else if (v === 'receivables') {
-    loadReceivables();
-  } else if (v === 'crm') {
-    loadCRM();
-  } else if (v === 'hr') {
-    loadHR();
-  } else if (v === 'accounting') {
-    loadAccounting();
-  } else if (v === 'procurement') {
-    loadProcurement();
-  } else if (v === 'logistics') {
-    loadLogistics();
-  } else if (v === 'stock-movements') {
-    loadStockMovements();
-  } else if (v === 'services') {
-    loadServices();
-  } else if (v === 'z-reports') {
-    loadZReports();
-  } else {
-    loadDashboardKPIs();
-  }
+  triggerViewLoad(state.currentView || 'dashboard');
 }
 
 function openCmdModal() {

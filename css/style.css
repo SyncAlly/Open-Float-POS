@@ -1024,3 +1024,29 @@ table { border-collapse: collapse; width: 100%; }
   0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
   30% { transform: translateY(-5px); opacity: 1; }
 }
+
+/* --- Loading Spinner & Skeleton Styles --- */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner-sm {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border, #e2e8f0);
+  border-top-color: var(--brand, #3b82f6);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.view-loading-row td,
+.view-loading-box {
+  text-align: center !important;
+  padding: 32px 16px !important;
+  color: var(--text-muted, #64748b) !important;
+  font-size: 13px !important;
+}
+
