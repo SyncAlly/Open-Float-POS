@@ -13,4 +13,7 @@ router.post('/deliveries', requireAuth, ctrl.createDelivery);
 // PATCH /api/logistics/deliveries/:id/status — Update status/driver/ETA
 router.patch('/deliveries/:id/status', requireAuth, ctrl.updateDeliveryStatus);
 
+// DELETE /api/logistics/deliveries/:id — Delete delivery record
+router.delete('/deliveries/:id', requireAuth, ctrl.deleteDelivery);
+
 module.exports = router;

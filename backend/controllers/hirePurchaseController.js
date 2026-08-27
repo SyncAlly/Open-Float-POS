@@ -72,4 +72,16 @@ async function recordPayment(req, res) {
   }
 }
 
-module.exports = { getAgreements, createAgreement, recordPayment };
+async function deleteAgreement(req, res) {
+  try {
+    const db = await getDb();
+    exec(db, 'DELETE FROM hire_purchase_payments WHERE agreement_id = ?', [req.params.id]);
+    const result = exec(db, 'DELETE FROM hire_purchase WHERE id = ?', [req.params.id]);
+    if (!result.changes) return res.status(404).json({ error: 'Agreement not found.' });
+    res.json({ success: true, message: 'Agreement deleted from database.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getAgreements, createAgreement, recordPayment, deleteAgreement };

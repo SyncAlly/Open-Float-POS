@@ -146,10 +146,9 @@ async function adjustStock(req, res) {
 async function deleteProduct(req, res) {
   try {
     const db = await getDb();
-    // Soft delete — keep the record but flag inactive
-    const result = exec(db, 'UPDATE products SET is_active = 0 WHERE id = ?', [req.params.id]);
+    const result = exec(db, 'DELETE FROM products WHERE id = ?', [req.params.id]);
     if (!result.changes) return res.status(404).json({ error: 'Product not found.' });
-    res.json({ success: true, message: 'Product deleted.' });
+    res.json({ success: true, message: 'Product deleted from database.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -163,8 +162,8 @@ async function bulkDeleteProducts(req, res) {
       return res.status(400).json({ error: 'ids array is required.' });
     }
     const placeholders = ids.map(() => '?').join(',');
-    const result = exec(db, `UPDATE products SET is_active = 0 WHERE id IN (${placeholders})`, ids);
-    res.json({ success: true, count: result.changes, message: `${result.changes} product(s) deleted.` });
+    const result = exec(db, `DELETE FROM products WHERE id IN (${placeholders})`, ids);
+    res.json({ success: true, count: result.changes, message: `${result.changes} product(s) deleted from database.` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

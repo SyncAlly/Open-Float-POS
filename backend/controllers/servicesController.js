@@ -58,9 +58,9 @@ async function updateService(req, res) {
 async function deleteService(req, res) {
   try {
     const db = await getDb();
-    const result = exec(db, 'UPDATE services SET is_active = 0 WHERE id = ?', [req.params.id]);
+    const result = exec(db, 'DELETE FROM services WHERE id = ?', [req.params.id]);
     if (!result.changes) return res.status(404).json({ error: 'Service not found.' });
-    res.json({ success: true, message: 'Service deactivated.' });
+    res.json({ success: true, message: 'Service deleted from database.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

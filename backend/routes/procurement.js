@@ -16,4 +16,7 @@ router.post('/requests', requireAuth, ctrl.createPurchaseRequest);
 // PATCH /api/procurement/requests/:id/status — approve/reject/deliver PR
 router.patch('/requests/:id/status', requireAuth, ctrl.updatePRStatus);
 
+// DELETE /api/procurement/requests/:id — delete PR
+router.delete('/requests/:id', requireAuth, ctrl.deletePurchaseRequest);
+
 module.exports = router;

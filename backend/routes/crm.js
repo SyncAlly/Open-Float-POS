@@ -22,4 +22,7 @@ router.post('/customers', requireAuth, ctrl.createCustomer);
 // PUT /api/crm/customers/:id
 router.put('/customers/:id', requireAuth, ctrl.updateCustomer);
 
+// DELETE /api/crm/customers/:id
+router.delete('/customers/:id', requireAuth, ctrl.deleteCustomer);
+
 module.exports = router;

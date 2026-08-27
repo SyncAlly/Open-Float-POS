@@ -74,4 +74,15 @@ async function updateDeliveryStatus(req, res) {
   }
 }
 
-module.exports = { getDeliveries, createDelivery, updateDeliveryStatus };
+async function deleteDelivery(req, res) {
+  try {
+    const db = await getDb();
+    const result = exec(db, 'DELETE FROM deliveries WHERE id = ?', [req.params.id]);
+    if (!result.changes) return res.status(404).json({ error: 'Delivery not found.' });
+    res.json({ success: true, message: 'Delivery deleted.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getDeliveries, createDelivery, updateDeliveryStatus, deleteDelivery };

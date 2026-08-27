@@ -122,4 +122,15 @@ async function getCRMSummary(req, res) {
   }
 }
 
-module.exports = { getCustomers, getCustomer, createCustomer, updateCustomer, redeemPoints, getCRMSummary };
+async function deleteCustomer(req, res) {
+  try {
+    const db = await getDb();
+    const result = exec(db, 'DELETE FROM customers WHERE id = ?', [req.params.id]);
+    if (!result.changes) return res.status(404).json({ error: 'Customer not found.' });
+    res.json({ success: true, message: 'Customer deleted from database.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getCustomers, getCustomer, createCustomer, updateCustomer, redeemPoints, getCRMSummary, deleteCustomer };

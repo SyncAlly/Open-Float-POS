@@ -67,4 +67,15 @@ async function recordARPayment(req, res) {
   }
 }
 
-module.exports = { getReceivablesSummary, recordARPayment };
+async function deleteReceivable(req, res) {
+  try {
+    const db = await getDb();
+    const result = exec(db, 'UPDATE customers SET credit_balance = 0 WHERE id = ?', [req.params.id]);
+    if (!result.changes) return res.status(404).json({ error: 'Customer not found.' });
+    res.json({ success: true, message: 'Customer receivable debt cleared.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getReceivablesSummary, recordARPayment, deleteReceivable };

@@ -55,9 +55,9 @@ async function updateSupplier(req, res) {
 async function deleteSupplier(req, res) {
   try {
     const db = await getDb();
-    const result = exec(db, 'UPDATE suppliers SET is_active = 0 WHERE id = ?', [req.params.id]);
+    const result = exec(db, 'DELETE FROM suppliers WHERE id = ?', [req.params.id]);
     if (!result.changes) return res.status(404).json({ error: 'Supplier not found.' });
-    res.json({ success: true, message: 'Supplier deactivated.' });
+    res.json({ success: true, message: 'Supplier deleted from database.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

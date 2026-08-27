@@ -839,14 +839,21 @@ async function loadCustomers() {
     state.customersCache = data.data || [];
     const sel = document.getElementById('cart-customer');
     if (!sel) return;
-    const existing = sel.innerHTML; // keep walk-in option
+    const currentVal = sel.value;
+    let opts = '<option value="">Walk-in Customer</option>';
     state.customersCache.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = c.name + (c.phone ? ' — ' + c.phone : '');
-      sel.appendChild(opt);
+      const pointsStr = c.loyalty_points ? ` (${c.loyalty_points} pts)` : '';
+      const phoneStr = c.phone ? ` · ${c.phone}` : '';
+      opts += `<option value="${c.id}">${c.name}${pointsStr}${phoneStr}</option>`;
     });
-  } catch (e) { /* offline: keep static options */ }
+    sel.innerHTML = opts;
+    if (currentVal && state.customersCache.some(c => String(c.id) === String(currentVal))) {
+      sel.value = currentVal;
+    }
+    onCustomerSelect();
+  } catch (e) {
+    console.warn('[loadCustomers] error loading customers:', e);
+  }
 }
 
 async function loadDashboardKPIs() {
@@ -1334,7 +1341,7 @@ function renderSupplierRows(items) {
       <td style="white-space:nowrap;">
         <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="openSupplierModal(${s.id})">Edit</button>
         <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="viewSupplierPOs(${s.id}, '${s.name.replace(/'/g, "\\'")}')">View POs</button>
-        <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);" onclick="deactivateSupplier(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Remove</button>
+        <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);" onclick="deactivateSupplier(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Delete</button>
       </td>
     </tr>`;
   }).join('');
@@ -1380,7 +1387,7 @@ function viewSupplierPOs(id, name) {
 }
 
 async function deactivateSupplier(id, name) {
-  if (!confirm(`Remove "${name}" from your supplier list?`)) return;
+  if (!confirm(`Permanently delete "${name}" from your supplier list?\nThis cannot be undone.`)) return;
   try {
     const res = await fetch(`/api/suppliers/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + (state.token || '') } });
     const data = await res.json();
@@ -1409,6 +1416,76 @@ function exportSuppliersCSV() {
   showToast('Suppliers exported to CSV');
 }
 
+
+// ─── Delete Handler Functions ───────────────────────────────────────────────
+
+async function deleteService(id, name) {
+  if (!confirm(`Delete service "${name}" from the catalog?\nThis cannot be undone.`)) return;
+  try {
+    const res = await apiDelete(`/api/services/${id}`);
+    if (res.success) { showToast(`Service "${name}" deleted.`); loadServices(); }
+    else showToast(res.error || 'Failed to delete service');
+  } catch (e) { showToast('Error deleting service'); }
+}
+
+async function deleteHPAgreement(id, customerName) {
+  if (!confirm(`Delete hire purchase agreement for "${customerName}"?\nAll associated payment records will also be removed. This cannot be undone.`)) return;
+  try {
+    const res = await apiDelete(`/api/hire-purchase/${id}`);
+    if (res.success) { showToast(`HP agreement for ${customerName} deleted.`); loadHirePurchase(); }
+    else showToast(res.error || 'Failed to delete agreement');
+  } catch (e) { showToast('Error deleting HP agreement'); }
+}
+
+async function deleteReceivable(id, name) {
+  if (!confirm(`Clear outstanding debt for "${name}"?\nThis will reset their credit balance to KES 0.`)) return;
+  try {
+    const res = await apiDelete(`/api/receivables/${id}`);
+    if (res.success) { showToast(`Debt cleared for ${name}.`); loadReceivables(); }
+    else showToast(res.error || 'Failed to clear debt');
+  } catch (e) { showToast('Error clearing receivable'); }
+}
+
+async function deleteCustomer(id, name) {
+  if (!confirm(`Delete customer "${name}" permanently?\nThis will remove all their data. This cannot be undone.`)) return;
+  try {
+    const res = await apiDelete(`/api/crm/customers/${id}`);
+    if (res.success) {
+      showToast(`Customer "${name}" deleted.`);
+      loadCRM();
+      loadCustomers();
+    } else showToast(res.error || 'Failed to delete customer');
+  } catch (e) { showToast('Error deleting customer'); }
+}
+
+async function deleteStockMovement(id, ref) {
+  if (!confirm(`Delete stock movement record "${ref}"?\nThis cannot be undone.`)) return;
+  try {
+    const res = await apiDelete(`/api/stock-movements/${id}`);
+    if (res.success) { showToast(`Movement ${ref} deleted.`); loadStockMovements(); }
+    else showToast(res.error || 'Failed to delete movement');
+  } catch (e) { showToast('Error deleting movement'); }
+}
+
+async function deletePurchaseRequest(id, ref) {
+  if (!confirm(`Delete purchase request "${ref}"?\nAll line items will also be removed. This cannot be undone.`)) return;
+  try {
+    const res = await apiDelete(`/api/procurement/requests/${id}`);
+    if (res.success) { showToast(`PR ${ref} deleted.`); loadProcurement(); }
+    else showToast(res.error || 'Failed to delete purchase request');
+  } catch (e) { showToast('Error deleting purchase request'); }
+}
+
+async function deleteDelivery(id, ref) {
+  if (!confirm(`Delete delivery record "${ref}"?\nThis cannot be undone.`)) return;
+  try {
+    const res = await apiDelete(`/api/logistics/deliveries/${id}`);
+    if (res.success) { showToast(`Delivery ${ref} deleted.`); loadLogistics(); }
+    else showToast(res.error || 'Failed to delete delivery');
+  } catch (e) { showToast('Error deleting delivery'); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 let _hpCache = [];
 let _hpCurrentTab = 'active';
@@ -1484,8 +1561,9 @@ function renderHPRows(items) {
       <td><strong>KES ${fmt(hp.balance)}</strong></td>
       <td>${hp.next_due || '—'}</td>
       <td><span class="badge ${badge}">${(hp.status || 'active').toUpperCase()}</span></td>
-      <td>
+      <td style="white-space:nowrap;">
         ${isCompleted ? '<span class="badge badge-green">SETTLED</span>' : `<button class="btn-sm tiny primary" onclick="recordHPPaymentPrompt(${hp.id}, '${hp.customer_name}', ${hp.balance})">Record Payment</button>`}
+        <button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteHPAgreement(${hp.id}, '${hp.customer_name}')">Delete</button>
       </td>
     </tr>`;
   }).join('');
@@ -1578,7 +1656,10 @@ function renderDebtorRows(items) {
       <td>KES ${Number(c.credit_limit || 0).toLocaleString()}</td>
       <td><strong style="color:var(--red)">KES ${Number(c.credit_balance || 0).toLocaleString()}</strong></td>
       <td><span class="badge ${badge}">${c.risk_level || 'LOW'}</span></td>
-      <td><button class="btn-sm" style="padding:3px 8px;font-size:11px;" onclick="openARPaymentModal(${c.id})">Record Payment</button></td>
+      <td style="white-space:nowrap;">
+        <button class="btn-sm" style="padding:3px 8px;font-size:11px;" onclick="openARPaymentModal(${c.id})">Record Payment</button>
+        <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deleteReceivable(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Clear Debt</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -1768,7 +1849,10 @@ function renderCRMRows(customers) {
       <td>KES ${fmt(c.credit_limit || 0)}</td>
       <td>${c.total_orders || 0}</td>
       <td><strong>KES ${fmt(c.total_spent || 0)}</strong></td>
-      <td><button class="btn-sm tiny secondary" onclick="openCustomerModal(${c.id})">Edit</button></td>
+      <td style="white-space:nowrap;">
+        <button class="btn-sm tiny secondary" onclick="openCustomerModal(${c.id})">Edit</button>
+        <button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteCustomer(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Delete</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -1918,7 +2002,8 @@ function renderServicesRows(items) {
       <td>${s.vat_applicable ? '<span class="badge badge-green">Yes (16%)</span>' : '<span class="badge badge-amber">No (EXEMPT)</span>'}</td>
       <td>${s.available_at || 'All Branches'}</td>
       <td><span class="badge ${badgeClass}">${isActive ? 'Active' : 'Inactive'}</span></td>
-      <td><button class="btn-sm tiny secondary" onclick="openServiceModal(${s.id})">Edit</button></td>
+      <td><button class="btn-sm tiny secondary" onclick="openServiceModal(${s.id})">Edit</button>
+          <button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteService(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Delete</button></td>
     </tr>`;
   }).join('');
 }
@@ -2006,7 +2091,7 @@ function renderStockMovementRows(items) {
   const tbody = document.querySelector('#view-stock-movements table.data-table tbody');
   if (!tbody) return;
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;">No stock movements logged.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;">No stock movements logged.</td></tr>';
     return;
   }
   tbody.innerHTML = items.map(m => {
@@ -2025,6 +2110,7 @@ function renderStockMovementRows(items) {
       <td>${m.reason || '—'}</td>
       <td>${m.recorded_by || 'Staff'}</td>
       <td>${m.branch_name || 'Nairobi Main'}</td>
+      <td><button class="btn-sm tiny secondary" style="color:var(--red);" onclick="deleteStockMovement(${m.id}, '${(m.ref || '').replace(/'/g, "\\'")}')">Delete</button></td>
     </tr>`;
   }).join('');
 }
@@ -4279,7 +4365,7 @@ function renderEmployeeRows(items) {
       <td style="white-space:nowrap;">
         <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openEmployeeModal(${e.id})">Edit</button>
         <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openAttendanceModal(${e.id})">Attendance</button>
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Remove</button>
+        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
       </td>
     </tr>`;
   }).join('');
@@ -4428,7 +4514,7 @@ async function submitEmployeeModal() {
 }
 
 async function terminateEmployee(id, name) {
-  if (!confirm(`Terminate / remove employee "${name}" from active staff records?`)) return;
+  if (!confirm(`Permanently delete employee "${name}" from records?\nTheir attendance history will also be removed. This cannot be undone.`)) return;
   try {
     const res = await fetch(`/api/hr/employees/${id}`, {
       method: 'DELETE',
@@ -4639,7 +4725,9 @@ function renderPRRows(items, tab = 'all') {
       <td>${p.supplier_name || '—'}</td>
       <td><span class="badge ${badgeClass}">${p.status}</span></td>
       <td style="white-space:nowrap;">${date}</td>
-      <td style="white-space:nowrap;">${actionBtns}</td>
+      <td style="white-space:nowrap;">${actionBtns}
+        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deletePurchaseRequest(${p.id}, '${(p.ref || 'PR-' + p.id).replace(/'/g, "\\'")}')">Delete</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -5677,7 +5765,9 @@ function renderDeliveryRows(items, tab = 'all') {
       <td>${d.destination || '—'}</td>
       <td>${d.eta || '—'}</td>
       <td><span class="badge ${badge}">${label}</span></td>
-      <td style="white-space:nowrap;">${actions}</td>
+      <td style="white-space:nowrap;">${actions}
+        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deleteDelivery(${d.id}, '${(d.ref || '').replace(/'/g, "\\'")}')">Delete</button>
+      </td>
     </tr>`;
   }).join('');
 }

@@ -5,5 +5,6 @@ const ctrl = require('../controllers/hirePurchaseController');
 router.get('/', requireAuth, ctrl.getAgreements);
 router.post('/', requireAuth, ctrl.createAgreement);
 router.post('/payment', requireAuth, ctrl.recordPayment);
+router.delete('/:id', requireAuth, ctrl.deleteAgreement);
 
 module.exports = router;

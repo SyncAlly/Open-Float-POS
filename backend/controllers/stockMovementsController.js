@@ -47,4 +47,15 @@ async function createMovement(req, res) {
   }
 }
 
-module.exports = { getMovements, createMovement };
+async function deleteMovement(req, res) {
+  try {
+    const db = await getDb();
+    const result = exec(db, 'DELETE FROM stock_movements WHERE id = ?', [req.params.id]);
+    if (!result.changes) return res.status(404).json({ error: 'Movement not found.' });
+    res.json({ success: true, message: 'Stock movement entry deleted from database.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getMovements, createMovement, deleteMovement };

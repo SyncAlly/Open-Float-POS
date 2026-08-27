@@ -98,4 +98,22 @@ async function getSuppliers(req, res) {
   }
 }
 
-module.exports = { getPurchaseRequests, createPurchaseRequest, updatePRStatus, getSuppliers };
+async function deletePurchaseRequest(req, res) {
+  try {
+    const db = await getDb();
+    exec(db, 'DELETE FROM purchase_request_items WHERE purchase_request_id = ?', [req.params.id]);
+    const result = exec(db, 'DELETE FROM purchase_requests WHERE id = ?', [req.params.id]);
+    if (!result.changes) return res.status(404).json({ error: 'Purchase request not found.' });
+    res.json({ success: true, message: 'Purchase request deleted from database.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = {
+  getPurchaseRequests,
+  createPurchaseRequest,
+  updatePRStatus,
+  getSuppliers,
+  deletePurchaseRequest
+};
