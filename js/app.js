@@ -1185,8 +1185,9 @@ function renderInventoryRows(items) {
     const stockStatus = item.stock_qty === 0 ? 'out' : item.stock_qty <= (item.reorder_level||10) ? 'low' : 'ok';
     const margin = item.sell_price && item.buy_price ? Math.round(((item.sell_price - item.buy_price) / item.sell_price) * 100) : 0;
     const badgeClass = stockStatus === 'ok' ? 'badge-green' : stockStatus === 'low' ? 'badge-amber' : 'badge-red';
+    const safeName = (item.name || '').replace(/'/g, "\\'");
     return `<tr>
-      <td><input type="checkbox" /></td>
+      <td><input type="checkbox" class="inv-row-check" value="${item.id}" onchange="updateInventoryBulkActions()" /></td>
       <td>
         <div style="display:flex;align-items:center;gap:8px;">
           ${item.image_url ? `<img src="${item.image_url}" alt="" referrerpolicy="no-referrer" loading="lazy" style="width:28px;height:28px;border-radius:4px;object-fit:cover;border:1px solid var(--border);" onerror="this.style.display='none'" />` : `<div style="width:28px;height:28px;border-radius:4px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-muted);font-weight:600;flex-shrink:0;">${(item.name || 'P')[0].toUpperCase()}</div>`}
@@ -1203,9 +1204,85 @@ function renderInventoryRows(items) {
       <td><span class="badge ${badgeClass}">${stockStatus.toUpperCase()}</span></td>
       <td>${item.supplier_name || '—'}</td>
       <td style="font-size:11.5px;color:var(--text-muted);">${item.expiry_date || '—'}</td>
-      <td><button class="btn-sm tiny secondary" onclick="openProductModal(${item.id})">Edit</button></td>
+      <td>
+        <div style="display:flex;gap:4px;">
+          <button class="btn-sm tiny secondary" onclick="openProductModal(${item.id})">Edit</button>
+          <button class="btn-sm tiny secondary" style="color:var(--red);" onclick="deleteProduct(${item.id}, '${safeName}')">Delete</button>
+        </div>
+      </td>
     </tr>`;
   }).join('');
+  updateInventoryBulkActions();
+}
+
+function toggleSelectAllInventory(master) {
+  const isChecked = !!master.checked;
+  document.querySelectorAll('.inv-row-check').forEach(cb => { cb.checked = isChecked; });
+  updateInventoryBulkActions();
+}
+
+function updateInventoryBulkActions() {
+  const checked = document.querySelectorAll('.inv-row-check:checked');
+  const count = checked.length;
+  const btn = document.getElementById('inv-bulk-delete-btn');
+  const countSpan = document.getElementById('inv-selected-count');
+  const master = document.getElementById('inv-select-all');
+
+  if (countSpan) countSpan.textContent = count;
+  if (btn) {
+    if (count > 0) btn.classList.remove('hidden');
+    else btn.classList.add('hidden');
+  }
+
+  const all = document.querySelectorAll('.inv-row-check');
+  if (master && all.length > 0) {
+    master.checked = count === all.length;
+    master.indeterminate = count > 0 && count < all.length;
+  }
+}
+
+async function deleteProduct(id, name = 'this product') {
+  if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+  try {
+    const res = await apiDelete(`/api/inventory/${id}`);
+    if (res && res.success) {
+      showToast(res.message || 'Product deleted.');
+      await loadInventory();
+      await loadPOSProducts();
+    } else {
+      showToast(res.error || 'Failed to delete product.');
+    }
+  } catch (err) {
+    console.error('[deleteProduct] error:', err);
+    showToast(err.message || 'Failed to delete product.');
+  }
+}
+
+async function deleteSelectedProducts() {
+  const checked = Array.from(document.querySelectorAll('.inv-row-check:checked')).map(cb => parseInt(cb.value)).filter(Boolean);
+  if (!checked.length) {
+    showToast('No products selected to delete.');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to delete ${checked.length} selected product(s)?`)) return;
+
+  try {
+    const res = await apiPost('/api/inventory/bulk-delete', { ids: checked });
+    if (res && res.success) {
+      showToast(res.message || `Deleted ${checked.length} product(s).`);
+      const master = document.getElementById('inv-select-all');
+      if (master) { master.checked = false; master.indeterminate = false; }
+      await loadInventory();
+      await loadPOSProducts();
+    } else {
+      showToast(res.error || 'Failed to delete selected products.');
+    }
+  } catch (err) {
+    console.error('[deleteSelectedProducts] error:', err);
+    showToast(err.message || 'Failed to delete selected products.');
+  }
 }
 
 /* ── NEW MODULE LOADERS (Suppliers, Hire Purchase, Receivables, Services, Movements, Z-Reports) ── */
@@ -2241,6 +2318,23 @@ async function openProductModal(id = null) {
   // Load fresh categories from API
   await loadCategories();
 
+  // Populate suppliers dropdown
+  const supSelect = document.getElementById('prod-supplier-id');
+  if (supSelect) {
+    if (!_suppliersCache.length) {
+      try {
+        const sRes = await apiGet('/api/suppliers');
+        _suppliersCache = sRes.data || [];
+      } catch (_) {}
+    }
+    let supOpts = '<option value="">Select Supplier (Optional)...</option>';
+    _suppliersCache.forEach(s => {
+      supOpts += `<option value="${s.id}">${s.name}</option>`;
+    });
+    supSelect.innerHTML = supOpts;
+    supSelect.value = '';
+  }
+
   // Clear/reset all fields
   const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val; };
   setVal('prod-id', '');
@@ -2269,6 +2363,7 @@ async function openProductModal(id = null) {
         setVal('prod-name', p.name || '');
         setVal('prod-sku', p.sku || '');
         setVal('prod-cat-id', p.category_id ? String(p.category_id) : (_categoriesCache.length ? String(_categoriesCache[0].id) : ''));
+        if (supSelect) supSelect.value = p.supplier_id ? String(p.supplier_id) : '';
         setVal('prod-image-url', p.image_url || '');
         onProductImageUrlChange(p.image_url || '');
         setVal('prod-buy-price', p.buy_price || '');
@@ -2295,6 +2390,7 @@ async function submitProductModal() {
   const sku = document.getElementById('prod-sku').value.trim();
   const catSelectVal = document.getElementById('prod-cat-id').value;
   const newCatName = (document.getElementById('prod-new-cat-name')?.value || '').trim();
+  const supplier_id = document.getElementById('prod-supplier-id')?.value ? parseInt(document.getElementById('prod-supplier-id').value) : null;
   const image_url = document.getElementById('prod-image-url')?.value.trim() || null;
   const buy_price = parseFloat(document.getElementById('prod-buy-price').value) || 0;
   const sell_price = parseFloat(document.getElementById('prod-sell-price').value);
@@ -2321,7 +2417,7 @@ async function submitProductModal() {
   }
 
   const payload = {
-    name, sku, category_id, new_category, image_url, buy_price, sell_price, stock_qty, unit, reorder_level, expiry_date
+    name, sku, category_id, new_category, supplier_id, image_url, buy_price, sell_price, stock_qty, unit, reorder_level, expiry_date
   };
 
   try {
@@ -5288,7 +5384,18 @@ function generateZReport() {
 }
 
 /* BATCH UPLOAD HANDLERS */
+function resetUploadDropZone() {
+  const fileInput = document.getElementById('upload-file-input');
+  if (fileInput) fileInput.value = '';
+  const text = document.getElementById('upload-drop-text');
+  if (text) {
+    text.textContent = 'Click or Drag & Drop CSV / Excel File';
+    text.style.color = '';
+  }
+}
+
 function openUploadModal(type = 'products') {
+  resetUploadDropZone();
   const modal = document.getElementById('upload-modal');
   const typeSelect = document.getElementById('upload-type-select');
   const title = document.getElementById('upload-modal-title');
@@ -5389,6 +5496,7 @@ async function processUploadBatch() {
           loadServices();
         } else {
           await loadCategories();
+          await loadSuppliers();
           await loadInventory();
           await loadPOSProducts();
         }
@@ -5398,8 +5506,10 @@ async function processUploadBatch() {
     } catch (err) {
       console.error('[processUploadBatch] Error:', err);
       showToast(err.message || 'Error processing batch upload.');
+    } finally {
+      resetUploadDropZone();
+      closeModal('upload-modal');
     }
-    closeModal('upload-modal');
   };
   reader.readAsText(file);
 }
@@ -5409,7 +5519,7 @@ function downloadCSVTemplate(type = 'products') {
   if (type === 'services') {
     csvContent = 'code,name,category,price,unit,vat_applicable\nSRV-101,Sample Service,Maintenance,1500,Per Hour,1\n';
   } else {
-    csvContent = 'name,sku,category,buy_price,sell_price,stock_qty,reorder_level,unit,image_url\nSample Product,PRD-101,Beverages,500,800,50,10,pcs,https://images.unsplash.com/photo-1544816155-12df9643f363?w=200\n';
+    csvContent = 'name,sku,category,supplier,buy_price,sell_price,stock_qty,reorder_level,unit,expiry_date,image_url\nFresh Milk 500ml,MLK-500,Dairy,Bidco Africa Ltd,50,65,50,10,packet,2027-12-31,https://drive.google.com/file/d/SAMPLE_ID/view?usp=sharing\n';
   }
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -5432,12 +5542,13 @@ async function exportInventoryCSV() {
       return;
     }
 
-    const headers = ['name', 'sku', 'category', 'buy_price', 'sell_price', 'stock_qty', 'reorder_level', 'unit', 'expiry_date', 'image_url'];
+    const headers = ['name', 'sku', 'category', 'supplier', 'buy_price', 'sell_price', 'stock_qty', 'reorder_level', 'unit', 'expiry_date', 'image_url'];
     const rows = products.map(p => {
       return [
         `"${(p.name || '').replace(/"/g, '""')}"`,
         `"${(p.sku || '').replace(/"/g, '""')}"`,
         `"${(p.category_name || '').replace(/"/g, '""')}"`,
+        `"${(p.supplier_name || '').replace(/"/g, '""')}"`,
         p.buy_price || 0,
         p.sell_price || 0,
         p.stock_qty || 0,

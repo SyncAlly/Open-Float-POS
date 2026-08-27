@@ -1,16 +1,6 @@
 /** Batch Upload Controller — Products & Services batch CSV upload */
 const { getDb, exec, query } = require('../db/database');
-
-function normalizeImageUrl(url) {
-  if (!url || typeof url !== 'string') return url || null;
-  const trimmed = url.trim();
-  if (!trimmed) return null;
-  const driveMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (driveMatch && driveMatch[1]) {
-    return 'https://lh3.googleusercontent.com/d/' + driveMatch[1];
-  }
-  return trimmed;
-}
+const { downloadAndSaveImage } = require('../utils/imageDownloader');
 
 async function uploadBatch(req, res) {
   try {
@@ -25,8 +15,9 @@ async function uploadBatch(req, res) {
     let errors = 0;
 
     if (upload_type === 'products' || upload_type === 'inventory') {
-      // Cache of category names to IDs to minimize queries in batch
+      // Cache of category and supplier names to IDs to minimize queries in batch
       const catCache = new Map();
+      const supCache = new Map();
 
       for (const item of items) {
         try {
@@ -62,13 +53,54 @@ async function uploadBatch(req, res) {
             }
           }
 
-          const rawImg = item.image_url || item.image || item.img || null;
-          const imageUrl = normalizeImageUrl(rawImg);
-          exec(db,
-            `INSERT INTO products (name, sku, category_id, buy_price, sell_price, stock_qty, reorder_level, unit, supplier_id, expiry_date, image_url)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [item.name || 'Unnamed Item', sku, categoryId, parseFloat(item.buy_price) || 0, parseFloat(item.sell_price) || 0, parseInt(item.stock_qty) || 0, parseInt(item.reorder_level) || 10, item.unit || 'pcs', item.supplier_id || null, item.expiry_date || null, imageUrl]
-          );
+          // Supplier resolution (aligns with Suppliers directory)
+          const rawSup = (item.supplier || item.supplier_name || item.vendor || '').trim();
+          let supplierId = null;
+
+          if (rawSup) {
+            const lowerSup = rawSup.toLowerCase();
+            if (supCache.has(lowerSup)) {
+              supplierId = supCache.get(lowerSup);
+            } else {
+              const existingSup = query(db, 'SELECT id FROM suppliers WHERE LOWER(name) = LOWER(?)', [rawSup]);
+              if (existingSup && existingSup.length > 0) {
+                supplierId = existingSup[0].id;
+              } else {
+                const insSup = exec(db, 'INSERT INTO suppliers (name, category, is_active) VALUES (?, ?, 1)', [rawSup, rawCat || 'General']);
+                supplierId = insSup.lastInsertRowid;
+              }
+              supCache.set(lowerSup, supplierId);
+            }
+          } else if (item.supplier_id && !isNaN(parseInt(item.supplier_id))) {
+            supplierId = parseInt(item.supplier_id);
+          }
+
+          const rawImg = item.image_url || item.image || item.img || item.image_name || item.image_filename || null;
+          // Fetch image server-side and save locally into ./uploads/products/
+          const localImagePath = rawImg ? await downloadAndSaveImage(rawImg, sku) : null;
+
+          // Upsert: if SKU already exists (even if soft-deleted), update it and reactivate.
+          const existing = query(db, 'SELECT id FROM products WHERE sku = ?', [sku]);
+          if (existing && existing.length > 0) {
+            exec(db,
+              `UPDATE products SET name=?, category_id=?, buy_price=?, sell_price=?, stock_qty=?,
+               reorder_level=?, unit=?, supplier_id=?, expiry_date=?, image_url=?, is_active=1, updated_at=datetime('now')
+               WHERE sku=?`,
+              [item.name || 'Unnamed Item', categoryId, parseFloat(item.buy_price) || 0,
+               parseFloat(item.sell_price) || 0, parseInt(item.stock_qty) || 0,
+               parseInt(item.reorder_level) || 10, item.unit || 'pcs',
+               supplierId, item.expiry_date || null, localImagePath, sku]
+            );
+          } else {
+            exec(db,
+              `INSERT INTO products (name, sku, category_id, buy_price, sell_price, stock_qty, reorder_level, unit, supplier_id, expiry_date, image_url, is_active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+              [item.name || 'Unnamed Item', sku, categoryId, parseFloat(item.buy_price) || 0,
+               parseFloat(item.sell_price) || 0, parseInt(item.stock_qty) || 0,
+               parseInt(item.reorder_level) || 10, item.unit || 'pcs',
+               supplierId, item.expiry_date || null, localImagePath]
+            );
+          }
           inserted++;
         } catch (e) {
           console.error('[uploadBatch] Product insert error:', e.message);

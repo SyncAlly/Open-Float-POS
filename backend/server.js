@@ -8,8 +8,14 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 
+const fs = require('fs');
+
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Ensure upload media directory exists
+const UPLOADS_DIR = path.resolve(__dirname, '../uploads/products');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // Core Middleware
 const allowedOrigins = [
@@ -27,9 +33,11 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Serve uploaded product images
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Serve frontend static files directly from root directory
 app.use(express.static(path.join(__dirname, '../')));

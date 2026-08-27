@@ -31,7 +31,10 @@ router.put('/:id', requireAuth, managerUp, ctrl.updateProduct);
 // PATCH /api/inventory/:id/stock     — adjust stock (manager/owner only)
 router.patch('/:id/stock', requireAuth, managerUp, ctrl.adjustStock);
 
-// DELETE /api/inventory/:id          — delete product (owner only)
-router.delete('/:id', requireAuth, requireRole('owner'), ctrl.deleteProduct);
+// DELETE /api/inventory/:id          — delete single product (manager/owner)
+router.delete('/:id', requireAuth, managerUp, ctrl.deleteProduct);
+
+// POST /api/inventory/bulk-delete    — bulk delete products (manager/owner)
+router.post('/bulk-delete', requireAuth, managerUp, ctrl.bulkDeleteProducts);
 
 module.exports = router;

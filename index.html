@@ -626,6 +626,7 @@
         <div class="view-header">
           <div><h1>Inventory Management</h1><p>Live stock levels and warehouse tracking</p></div>
           <div class="view-actions">
+            <button class="btn-sm secondary danger hidden" id="inv-bulk-delete-btn" onclick="deleteSelectedProducts()" style="color:var(--red);border-color:var(--red);font-weight:600;">Delete Selected (<span id="inv-selected-count">0</span>)</button>
             <button class="btn-sm secondary" onclick="exportInventoryCSV()">Export CSV</button>
             <button class="btn-sm secondary" onclick="openUploadModal('products')">Upload CSV</button>
             <button class="btn-sm" onclick="openProductModal()">+ Add Product</button>
@@ -650,7 +651,7 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th><input type="checkbox" /></th>
+                <th><input type="checkbox" id="inv-select-all" onchange="toggleSelectAllInventory(this)" /></th>
                 <th>Product</th><th>SKU</th><th>Category</th><th>Stock Qty</th>
                 <th>Unit</th><th>Buy Price</th><th>Sell Price</th><th>Margin</th>
                 <th>Status</th><th>Supplier</th><th>Expiry</th><th>Actions</th>
@@ -1470,7 +1471,7 @@
         </div>
       </div>
       <div class="modal-foot" style="gap:8px;margin-top:16px;">
-        <button class="btn-sm secondary" onclick="closeModal('upload-modal')">Cancel</button>
+        <button class="btn-sm secondary" onclick="resetUploadDropZone();closeModal('upload-modal')">Cancel</button>
         <button class="btn-sm" onclick="processUploadBatch()">Import &amp; Process</button>
       </div>
     </div>
@@ -1582,6 +1583,12 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Reorder Level</label><input type="number" class="form-field-input" id="prod-reorder" placeholder="10" style="width:100%;margin-top:4px;" /></div>
           <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);">Expiry Date</label><input type="date" class="form-field-input" id="prod-expiry" style="width:100%;margin-top:4px;" /></div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Supplier / Vendor</label>
+          <select class="form-field-input" id="prod-supplier-id" style="width:100%;margin-top:4px;">
+            <option value="">Select Supplier (Optional)...</option>
+          </select>
         </div>
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Product Image</label>
