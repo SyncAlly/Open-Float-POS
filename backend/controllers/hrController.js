@@ -99,10 +99,12 @@ async function markAttendance(req, res) {
       return res.status(400).json({ error: 'employee_id, date, status required.' });
     }
     // Upsert attendance
-    exec(db,
-      `INSERT INTO attendance (employee_id, date, status, notes) VALUES (?, ?, ?, ?)
-       ON CONFLICT(employee_id, date) DO UPDATE SET status = excluded.status, notes = excluded.notes`,
-      [employee_id, date, status, notes || null]);
+    const existing = query(db, 'SELECT id FROM attendance WHERE employee_id = ? AND date = ?', [employee_id, date]);
+    if (existing.length > 0) {
+      exec(db, 'UPDATE attendance SET status = ?, notes = ? WHERE id = ?', [status, notes || null, existing[0].id]);
+    } else {
+      exec(db, 'INSERT INTO attendance (employee_id, date, status, notes) VALUES (?, ?, ?, ?)', [employee_id, date, status, notes || null]);
+    }
 
     // Recompute attendance_pct for the employee (last 30 days)
     const att = query(db,
@@ -120,28 +122,35 @@ async function markAttendance(req, res) {
 async function getPayrollSummary(req, res) {
   try {
     const db = await getDb();
-    
-    // Get overall metrics
+    const { branch_id } = req.query;
+    const bFilter = branch_id && branch_id !== 'all' ? 'AND branch_id = ?' : '';
+    const bParam  = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+    // Get overall metrics scoped to branch
     const overall = query(db, `
       SELECT
-        (SELECT COUNT(*) FROM employees WHERE status != 'terminated') AS total_employees,
-        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'present') AS present_today,
-        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'on_leave') AS on_leave,
-        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'absent') AS absent,
-        (SELECT COALESCE(SUM(salary), 0) FROM employees WHERE status != 'terminated') AS total_payroll,
-        (SELECT COALESCE(ROUND(AVG(attendance_pct), 1), 100) FROM employees WHERE status != 'terminated') AS avg_attendance
-    `);
-    
-    // Get 14-day attendance history
+        (SELECT COUNT(*) FROM employees WHERE status != 'terminated' ${bFilter}) AS total_employees,
+        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'present'
+          AND employee_id IN (SELECT id FROM employees WHERE 1=1 ${bFilter})) AS present_today,
+        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'on_leave'
+          AND employee_id IN (SELECT id FROM employees WHERE 1=1 ${bFilter})) AS on_leave,
+        (SELECT COUNT(*) FROM attendance WHERE date = date('now') AND status = 'absent'
+          AND employee_id IN (SELECT id FROM employees WHERE 1=1 ${bFilter})) AS absent,
+        (SELECT COALESCE(SUM(salary), 0) FROM employees WHERE status != 'terminated' ${bFilter}) AS total_payroll,
+        (SELECT COALESCE(ROUND(AVG(attendance_pct), 1), 100) FROM employees WHERE status != 'terminated' ${bFilter}) AS avg_attendance
+    `, [...bParam, ...bParam, ...bParam, ...bParam, ...bParam, ...bParam]);
+
+    // Get 14-day attendance history (scoped to branch employees)
     const history = query(db, `
       SELECT date,
              SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present,
              SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) AS absent
       FROM attendance
       WHERE date >= date('now', '-14 days')
+        AND employee_id IN (SELECT id FROM employees WHERE 1=1 ${bFilter})
       GROUP BY date
       ORDER BY date ASC
-    `);
+    `, bParam);
 
     res.json({
       success: true,

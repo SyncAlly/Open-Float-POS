@@ -5,7 +5,7 @@ const { getDb, query, exec } = require('../db/database');
 async function getPurchaseRequests(req, res) {
   try {
     const db = await getDb();
-    const { status, supplier_id } = req.query;
+    const { status, supplier_id, branch_id } = req.query;
 
     let sql = `
       SELECT pr.*, e.name AS requested_by_name, s.name AS supplier_name
@@ -15,6 +15,7 @@ async function getPurchaseRequests(req, res) {
       WHERE 1=1
     `;
     const params = [];
+    if (branch_id && branch_id !== 'all') { sql += ' AND pr.branch_id = ?'; params.push(branch_id); }
     if (status)      { sql += ' AND pr.status = ?'; params.push(status); }
     if (supplier_id) { sql += ' AND pr.supplier_id = ?'; params.push(supplier_id); }
 
@@ -28,7 +29,7 @@ async function getPurchaseRequests(req, res) {
 async function createPurchaseRequest(req, res) {
   try {
     const db = await getDb();
-    const { supplier_id, items, notes } = req.body;
+    const { supplier_id, items, notes, branch_id } = req.body;
 
     if (!supplier_id || !items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'supplier_id and at least one item required.' });
@@ -42,9 +43,9 @@ async function createPurchaseRequest(req, res) {
     }
 
     const prResult = exec(db,
-      `INSERT INTO purchase_requests (ref, requested_by, supplier_id, total_value, item_count, status, notes)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
-      [ref, req.user ? req.user.id : null, supplier_id, totalValue, items.length, notes || null]
+      `INSERT INTO purchase_requests (ref, requested_by, supplier_id, total_value, item_count, status, notes, branch_id)
+       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [ref, req.user ? req.user.id : null, supplier_id, totalValue, items.length, notes || null, branch_id || null]
     );
 
     const prId = prResult.lastInsertRowid;

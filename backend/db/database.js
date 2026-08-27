@@ -171,7 +171,8 @@ function createTables() {
       employee_id INTEGER NOT NULL,
       date        TEXT NOT NULL,
       status      TEXT NOT NULL DEFAULT 'present',
-      notes       TEXT
+      notes       TEXT,
+      UNIQUE(employee_id, date)
     );
 
     CREATE TABLE IF NOT EXISTS purchase_requests (
@@ -338,6 +339,19 @@ function createTables() {
   } catch (err) {
     console.warn('[DB] Products table migration notice:', err.message);
   }
+
+  // Ensure unique index on attendance(employee_id, date) for upsert support
+  try {
+    _db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_emp_date ON attendance(employee_id, date)");
+  } catch (e) {
+    console.warn('[DB] Attendance unique index creation notice:', e.message);
+  }
+
+  // Add branch_id to hire_purchase (isolates HP agreements per branch)
+  try { _db.run("ALTER TABLE hire_purchase ADD COLUMN branch_id INTEGER"); } catch (e) {}
+
+  // Add branch_id to purchase_requests (isolates procurement per branch)
+  try { _db.run("ALTER TABLE purchase_requests ADD COLUMN branch_id INTEGER"); } catch (e) {}
 
   persist();
   console.log('[DB] Tables ready.');

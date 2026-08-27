@@ -1951,7 +1951,9 @@ async function loadHirePurchase() {
   const tbody = document.querySelector('#view-hire-purchase table.data-table tbody');
   if (!tbody) return;
   try {
-    const data = await apiGet('/api/hire-purchase');
+    const bId = state.currentBranch?.id;
+    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
+    const data = await apiGet(`/api/hire-purchase${bParam}`);
     _hpCache = data.data || [];
     updateHPKPIs(_hpCache);
     filterHPTab(_hpCurrentTab);
@@ -2070,7 +2072,9 @@ let _arDebtorsCache = [];
 
 async function loadReceivables() {
   try {
-    const res = await apiGet('/api/receivables');
+    const bId = state.currentBranch?.id;
+    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
+    const res = await apiGet(`/api/receivables${bParam}`);
     const d = res.data || {};
     _arDebtorsCache = d.customers || [];
 
@@ -2217,11 +2221,13 @@ let _crmCache = [];
 async function loadCRM() {
   const tbody = document.getElementById('crm-tbody');
   try {
-    const res = await apiGet('/api/crm/customers');
+    const bId = state.currentBranch?.id;
+    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
+    const res = await apiGet(`/api/crm/customers${bParam}`);
     _crmCache = res.data || [];
 
     // Also get summary KPIs
-    const summaryRes = await apiGet('/api/crm/summary');
+    const summaryRes = await apiGet(`/api/crm/summary${bParam}`);
     const summary = summaryRes.data || {};
 
     updateCRMKPIs(_crmCache, summary);
@@ -2870,7 +2876,9 @@ function exportStockMovementsCSV() {
 
 async function loadZReports() {
   try {
-    const res = await apiGet('/api/z-reports');
+    const bId = state.currentBranch?.id;
+    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
+    const res = await apiGet(`/api/z-reports${bParam}`);
     const reports = res.data || [];
     if (reports.length > 0) {
       const last = reports[0];
@@ -4736,11 +4744,14 @@ let _accJournalEntriesCache = [];
 
 async function loadAccounting() {
   try {
+    const bId = state.currentBranch?.id;
+    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
+    const txParam = bId && bId !== 'all' ? `?limit=1000&branch_id=${bId}` : '?limit=1000';
     const [ovRes, ledRes, jeRes, txsRes] = await Promise.all([
-      apiGet('/api/accounting/overview'),
-      apiGet('/api/accounting/ledgers'),
-      apiGet('/api/accounting/entries'),
-      apiGet('/api/sales/transactions?limit=1000')
+      apiGet(`/api/accounting/overview${bParam}`),
+      apiGet(`/api/accounting/ledgers${bParam}`),
+      apiGet(`/api/accounting/entries${bParam}`),
+      apiGet(`/api/sales/transactions${txParam}`)
     ]);
 
     _accJournalEntriesCache = jeRes.data || [];
@@ -4994,9 +5005,11 @@ let _hrEmployeesCache = [];
 
 async function loadHR() {
   try {
+    const bId = state.currentBranch?.id;
+    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
     const [summaryRes, empRes] = await Promise.all([
-      apiGet('/api/hr/payroll/summary'),
-      apiGet('/api/hr/employees')
+      apiGet(`/api/hr/payroll/summary${bParam}`),
+      apiGet(`/api/hr/employees${bParam}`)
     ]);
 
     // Update HR KPIs & Charts
@@ -5339,9 +5352,11 @@ let _prLineCount = 0;
 
 async function loadProcurement() {
   try {
+    const bId = state.currentBranch?.id;
+    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
     const [prData, supData] = await Promise.all([
-      apiGet('/api/procurement/requests'),
-      apiGet('/api/procurement/suppliers')
+      apiGet(`/api/procurement/requests${bParam}`),
+      apiGet('/api/procurement/suppliers')  // suppliers are global / shared master list
     ]);
     _prCache = prData.data || [];
     const suppliers = supData.data || [];
@@ -6054,15 +6069,68 @@ function selectBranch(branchName, branchId = null) {
     return;
   }
 
+  // ── INSTANT CACHE WIPE ───────────────────────────────────────────────────
+  // Clear ALL module caches immediately so old-branch data never flashes
+  _inventoryCache         = [];
+  _movementsCache         = [];
+  _suppliersCache         = [];
+  _hrEmployeesCache       = [];
+  _crmCache               = [];
+  _hpCache                = [];
+  _arDebtorsCache         = [];
+  _accJournalEntriesCache = [];
+  _delCache               = [];
+  _prCache                = [];
+  _servicesCache          = [];
+  _categoriesCache        = [];
+  state.productsCache     = [];
+
+  // Immediately blank out visible table bodies so there's zero stale data shown
+  const tableIds = [
+    'inv-tbody', 'sup-tbody', 'hp-tbody', 'ar-tbody', 'crm-tbody',
+    'hr-tbody', 'del-tbody', 'pr-tbody', 'srv-tbody',
+    'acc-je-tbody', 'movements-tbody'
+  ];
+  tableIds.forEach(tid => {
+    const tbl = document.getElementById(tid);
+    if (tbl) tbl.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-muted);">Switching branch...</td></tr>';
+  });
+  // ────────────────────────────────────────────────────────────────────────
+
   // Refresh active view data immediately for the new branch context
-  if (state.currentView === 'dashboard' || !state.currentView) {
+  const v = state.currentView;
+  if (!v || v === 'dashboard') {
     loadDashboardKPIs();
-  } else if (state.currentView === 'branch-comparison') {
+  } else if (v === 'branch-comparison') {
     loadBranchComparisonView();
-  } else if (state.currentView === 'sales') {
+  } else if (v === 'sales') {
     loadPOSProducts();
-  } else if (state.currentView === 'inventory') {
+  } else if (v === 'inventory') {
     loadInventory();
+  } else if (v === 'suppliers') {
+    loadSuppliers();
+  } else if (v === 'hire-purchase') {
+    loadHirePurchase();
+  } else if (v === 'receivables') {
+    loadReceivables();
+  } else if (v === 'crm') {
+    loadCRM();
+  } else if (v === 'hr') {
+    loadHR();
+  } else if (v === 'accounting') {
+    loadAccounting();
+  } else if (v === 'procurement') {
+    loadProcurement();
+  } else if (v === 'logistics') {
+    loadLogistics();
+  } else if (v === 'stock-movements') {
+    loadStockMovements();
+  } else if (v === 'services') {
+    loadServices();
+  } else if (v === 'z-reports') {
+    loadZReports();
+  } else {
+    loadDashboardKPIs();
   }
 }
 
@@ -6292,13 +6360,31 @@ function resetUploadDropZone() {
   }
 }
 
-function openUploadModal(type = 'products') {
+async function openUploadModal(type = 'products') {
   resetUploadDropZone();
   const modal = document.getElementById('upload-modal');
   const typeSelect = document.getElementById('upload-type-select');
+  const storeSelect = document.getElementById('upload-store-select');
   const title = document.getElementById('upload-modal-title');
   if (typeSelect) typeSelect.value = type;
   if (title) title.textContent = type === 'services' ? 'Upload Services Catalog CSV' : 'Upload Products Inventory CSV';
+
+  // Populate dynamic branches
+  if (storeSelect) {
+    try {
+      const bRes = await apiGet('/api/branches');
+      const branches = bRes.data || [];
+      let opts = '<option value="all">All Stores &amp; Warehouses</option>';
+      branches.forEach(b => {
+        opts += `<option value="${b.id}">${b.name}</option>`;
+      });
+      storeSelect.innerHTML = opts;
+
+      const activeBranchId = (state.currentBranch && state.currentBranch.id && state.currentBranch.id !== 'all') ? state.currentBranch.id : 1;
+      storeSelect.value = String(activeBranchId);
+    } catch (_) {}
+  }
+
   if (modal) modal.classList.remove('hidden');
 }
 
@@ -6349,7 +6435,8 @@ function parseCSVText(text) {
 }
 
 async function processUploadBatch() {
-  const store = document.getElementById('upload-store-select')?.value || 'Nairobi Main';
+  const storeSelect = document.getElementById('upload-store-select');
+  const storeVal = storeSelect?.value || '1';
   const type = document.getElementById('upload-type-select')?.value || 'products';
   const fileInput = document.getElementById('upload-file-input');
 
@@ -6357,6 +6444,10 @@ async function processUploadBatch() {
     showToast('Please select a CSV file to upload.');
     return;
   }
+
+  // Resolve target branch ID
+  const activeBranchId = (state.currentBranch && state.currentBranch.id && state.currentBranch.id !== 'all') ? state.currentBranch.id : 1;
+  const targetBranchId = storeVal !== 'all' ? storeVal : activeBranchId;
 
   const file = fileInput.files[0];
   const reader = new FileReader();
@@ -6379,6 +6470,10 @@ async function processUploadBatch() {
         headers.forEach((h, idx) => {
           obj[h] = row[idx] !== undefined ? row[idx] : '';
         });
+        // Default item branch to targetBranchId if not specified in CSV row
+        if (!obj.branch_id && !obj.branch && targetBranchId) {
+          obj.branch_id = targetBranchId;
+        }
         items.push(obj);
       }
 
@@ -6387,9 +6482,14 @@ async function processUploadBatch() {
         return;
       }
 
-      const res = await apiPost('/api/upload', { upload_type: type, store_warehouse: store, items });
+      const res = await apiPost('/api/upload', {
+        upload_type: type,
+        store_warehouse: storeVal,
+        branch_id: targetBranchId,
+        items
+      });
       if (res && res.success) {
-        showToast(res.message || `Successfully imported ${res.inserted || items.length} records!`);
+        showToast(res.message || `Successfully processed ${res.total || items.length} records!`);
         if (type === 'services') {
           loadServices();
         } else {
@@ -6433,14 +6533,16 @@ function downloadCSVTemplate(type = 'products') {
 
 async function exportInventoryCSV() {
   try {
-    const res = await apiGet('/api/inventory');
+    const branchId = state.currentBranch && state.currentBranch.id ? state.currentBranch.id : 'all';
+    const url = branchId === 'all' ? '/api/inventory' : `/api/inventory?branch_id=${branchId}`;
+    const res = await apiGet(url);
     const products = (res && res.data) ? res.data : [];
     if (!products.length) {
-      showToast('No inventory products to export');
+      showToast('No inventory products to export for this branch');
       return;
     }
 
-    const headers = ['name', 'sku', 'category', 'supplier', 'buy_price', 'sell_price', 'stock_qty', 'reorder_level', 'unit', 'expiry_date', 'image_url'];
+    const headers = ['name', 'sku', 'category', 'supplier', 'buy_price', 'sell_price', 'stock_qty', 'reorder_level', 'unit', 'expiry_date', 'image_url', 'branch_id', 'branch_name'];
     const rows = products.map(p => {
       return [
         `"${(p.name || '').replace(/"/g, '""')}"`,
@@ -6453,21 +6555,24 @@ async function exportInventoryCSV() {
         p.reorder_level || 10,
         `"${(p.unit || 'pcs').replace(/"/g, '""')}"`,
         p.expiry_date || '',
-        `"${(p.image_url || '').replace(/"/g, '""')}"`
+        `"${(p.image_url || '').replace(/"/g, '""')}"`,
+        p.branch_id || (branchId !== 'all' ? branchId : 1),
+        `"${(p.branch_name || state.currentBranch?.name || 'Main Branch').replace(/"/g, '""')}"`
       ].join(',');
     });
 
     const csvContent = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
+    const branchSlug = (state.currentBranch?.name || 'inventory').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     const dateStr = new Date().toISOString().slice(0, 10);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `openfloat_inventory_export_${dateStr}.csv`);
+    link.setAttribute('href', blobUrl);
+    link.setAttribute('download', `openfloat_${branchSlug}_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast(`Exported ${products.length} products to CSV`);
+    showToast(`Exported ${products.length} products for ${state.currentBranch?.name || 'branch'} to CSV`);
   } catch (err) {
     console.error('[exportInventoryCSV] error:', err);
     showToast('Failed to export inventory CSV');
@@ -6495,7 +6600,9 @@ const _NAIROBI_VEHICLES = [
 
 async function loadLogistics() {
   try {
-    const data = await apiGet('/api/logistics/deliveries');
+    const bId = state.currentBranch?.id;
+    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
+    const data = await apiGet(`/api/logistics/deliveries${bParam}`);
     _delCache = data.data || [];
     updateDeliveryKPIs(_delCache);
     renderDeliveryRows(_delCache, _delCurrentTab);

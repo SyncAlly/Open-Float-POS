@@ -5,7 +5,7 @@ const { getDb, query, exec } = require('../db/database');
 async function getCustomers(req, res) {
   try {
     const db = await getDb();
-    const { segment, search } = req.query;
+    const { segment, search, branch_id } = req.query;
     let sql = `
       SELECT c.*, b.name AS branch_name,
              (SELECT COUNT(*) FROM transactions t WHERE t.customer_id = c.id) AS total_orders,
@@ -15,6 +15,7 @@ async function getCustomers(req, res) {
       WHERE 1=1
     `;
     const params = [];
+    if (branch_id && branch_id !== 'all') { sql += ' AND c.branch_id = ?'; params.push(branch_id); }
     if (segment) { sql += ' AND c.segment = ?'; params.push(segment); }
     if (search)  { sql += ' AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
 
@@ -108,6 +109,9 @@ async function redeemPoints(req, res) {
 async function getCRMSummary(req, res) {
   try {
     const db = await getDb();
+    const { branch_id } = req.query;
+    const whereClause = branch_id && branch_id !== 'all' ? 'WHERE branch_id = ?' : 'WHERE 1=1';
+    const params = branch_id && branch_id !== 'all' ? [branch_id] : [];
     const rows = query(db, `
       SELECT
         COUNT(*) AS total_customers,
@@ -115,7 +119,8 @@ async function getCRMSummary(req, res) {
         SUM(CASE WHEN credit_balance > 0 THEN 1 ELSE 0 END) AS credit_accounts,
         ROUND(SUM(credit_balance), 2) AS total_debt_owed
       FROM customers
-    `);
+      ${whereClause}
+    `, params);
     res.json({ success: true, data: rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -5,14 +5,33 @@ const { downloadAndSaveImage } = require('../utils/imageDownloader');
 async function uploadBatch(req, res) {
   try {
     const db = await getDb();
-    const { upload_type, store_warehouse, items } = req.body;
+    const { upload_type, store_warehouse, branch_id, items } = req.body;
 
     if (!upload_type || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'upload_type and non-empty items array are required.' });
     }
 
     let inserted = 0;
+    let updated = 0;
     let errors = 0;
+
+    // Load branches to map branch names to IDs
+    const branches = query(db, 'SELECT id, name FROM branches');
+    const branchMap = new Map();
+    branches.forEach(b => {
+      branchMap.set(String(b.id), b.id);
+      branchMap.set(b.name.toLowerCase(), b.id);
+    });
+
+    // Resolve default batch branch
+    let defaultBatchBranchId = 1;
+    if (branch_id && !isNaN(parseInt(branch_id))) {
+      defaultBatchBranchId = parseInt(branch_id);
+    } else if (store_warehouse && branchMap.has(String(store_warehouse).toLowerCase())) {
+      defaultBatchBranchId = branchMap.get(String(store_warehouse).toLowerCase());
+    } else if (req.user && req.user.branch_id) {
+      defaultBatchBranchId = req.user.branch_id;
+    }
 
     if (upload_type === 'products' || upload_type === 'inventory') {
       // Cache of category and supplier names to IDs to minimize queries in batch
@@ -21,7 +40,17 @@ async function uploadBatch(req, res) {
 
       for (const item of items) {
         try {
-          const sku = item.sku || 'SKU-' + Math.floor(1000 + Math.random() * 9000);
+          const sku = (item.sku || ('SKU-' + Math.floor(1000 + Math.random() * 9000))).trim();
+
+          // Resolve branch for this individual item if specified in CSV, otherwise use batch default
+          let itemBranchId = defaultBatchBranchId;
+          const rawItemBranch = (item.branch_id || item.branch || item.branch_name || '').toString().trim();
+          if (rawItemBranch && branchMap.has(rawItemBranch.toLowerCase())) {
+            itemBranchId = branchMap.get(rawItemBranch.toLowerCase());
+          } else if (rawItemBranch && !isNaN(parseInt(rawItemBranch))) {
+            itemBranchId = parseInt(rawItemBranch);
+          }
+
           const rawCat = (item.category || item.category_name || item.cat || '').trim();
           let categoryId = null;
 
@@ -79,29 +108,31 @@ async function uploadBatch(req, res) {
           // Fetch image server-side and save locally into ./uploads/products/
           const localImagePath = rawImg ? await downloadAndSaveImage(rawImg, sku) : null;
 
-          // Upsert: if SKU already exists (even if soft-deleted), update it and reactivate.
-          const existing = query(db, 'SELECT id FROM products WHERE sku = ?', [sku]);
+          // Upsert scoped strictly to SKU AND Branch
+          const existing = query(db, 'SELECT id, image_url FROM products WHERE sku = ? AND branch_id = ?', [sku, itemBranchId]);
           if (existing && existing.length > 0) {
+            const finalImage = localImagePath || existing[0].image_url || null;
             exec(db,
               `UPDATE products SET name=?, category_id=?, buy_price=?, sell_price=?, stock_qty=?,
                reorder_level=?, unit=?, supplier_id=?, expiry_date=?, image_url=?, is_active=1, updated_at=datetime('now')
-               WHERE sku=?`,
+               WHERE id=?`,
               [item.name || 'Unnamed Item', categoryId, parseFloat(item.buy_price) || 0,
                parseFloat(item.sell_price) || 0, parseInt(item.stock_qty) || 0,
                parseInt(item.reorder_level) || 10, item.unit || 'pcs',
-               supplierId, item.expiry_date || null, localImagePath, sku]
+               supplierId, item.expiry_date || null, finalImage, existing[0].id]
             );
+            updated++;
           } else {
             exec(db,
-              `INSERT INTO products (name, sku, category_id, buy_price, sell_price, stock_qty, reorder_level, unit, supplier_id, expiry_date, image_url, is_active)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+              `INSERT INTO products (name, sku, category_id, buy_price, sell_price, stock_qty, reorder_level, unit, supplier_id, expiry_date, image_url, branch_id, is_active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
               [item.name || 'Unnamed Item', sku, categoryId, parseFloat(item.buy_price) || 0,
                parseFloat(item.sell_price) || 0, parseInt(item.stock_qty) || 0,
                parseInt(item.reorder_level) || 10, item.unit || 'pcs',
-               supplierId, item.expiry_date || null, localImagePath]
+               supplierId, item.expiry_date || null, localImagePath, itemBranchId]
             );
+            inserted++;
           }
-          inserted++;
         } catch (e) {
           console.error('[uploadBatch] Product insert error:', e.message);
           errors++;
@@ -126,7 +157,7 @@ async function uploadBatch(req, res) {
       return res.status(400).json({ error: 'Invalid upload_type. Use "products" or "services".' });
     }
 
-    res.json({ success: true, inserted, errors, total: items.length, message: `Batch upload finished: ${inserted} inserted, ${errors} failed.` });
+    res.json({ success: true, inserted, updated, errors, total: items.length, message: `Batch upload finished: ${inserted} added, ${updated} updated, ${errors} failed.` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

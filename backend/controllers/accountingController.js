@@ -55,10 +55,11 @@ async function getFinancialOverview(req, res) {
 async function getJournalEntries(req, res) {
   try {
     const db = await getDb();
-    const { type, category } = req.query;
+    const { type, category, branch_id } = req.query;
 
     let sql = 'SELECT j.*, b.name AS branch_name FROM journal_entries j LEFT JOIN branches b ON j.branch_id = b.id WHERE 1=1';
     const params = [];
+    if (branch_id && branch_id !== 'all') { sql += ' AND j.branch_id = ?'; params.push(branch_id); }
     if (type)     { sql += ' AND j.type = ?'; params.push(type); }
     if (category) { sql += ' AND j.category = ?'; params.push(category); }
 
@@ -94,8 +95,17 @@ async function createJournalEntry(req, res) {
 async function getARAPLedgers(req, res) {
   try {
     const db = await getDb();
-    const ar = query(db, 'SELECT id, name, credit_balance AS amount_owed, phone FROM customers WHERE credit_balance > 0 ORDER BY credit_balance DESC');
-    const ap = query(db, "SELECT id, ref, total_value AS amount_owed, created_at FROM purchase_requests WHERE status = 'approved' ORDER BY total_value DESC");
+    const { branch_id } = req.query;
+    const arSql = branch_id && branch_id !== 'all'
+      ? 'SELECT id, name, credit_balance AS amount_owed, phone FROM customers WHERE credit_balance > 0 AND branch_id = ? ORDER BY credit_balance DESC'
+      : 'SELECT id, name, credit_balance AS amount_owed, phone FROM customers WHERE credit_balance > 0 ORDER BY credit_balance DESC';
+    const apSql = branch_id && branch_id !== 'all'
+      ? "SELECT id, ref, total_value AS amount_owed, created_at FROM purchase_requests WHERE status = 'approved' AND branch_id = ? ORDER BY total_value DESC"
+      : "SELECT id, ref, total_value AS amount_owed, created_at FROM purchase_requests WHERE status = 'approved' ORDER BY total_value DESC";
+    const bParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+    const ar = query(db, arSql, bParams);
+    const ap = query(db, apSql, bParams);
 
     res.json({
       success: true,

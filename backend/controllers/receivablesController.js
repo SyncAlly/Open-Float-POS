@@ -4,6 +4,9 @@ const { getDb, query, exec } = require('../db/database');
 async function getReceivablesSummary(req, res) {
   try {
     const db = await getDb();
+    const { branch_id } = req.query;
+    const branchFilter = branch_id && branch_id !== 'all' ? 'AND c.branch_id = ?' : '';
+    const branchParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
 
     // Customers with outstanding balance > 0
     const customers = query(db, `
@@ -13,12 +16,15 @@ async function getReceivablesSummary(req, res) {
                WHEN credit_balance >= credit_limit * 0.4 THEN 'MEDIUM'
                ELSE 'LOW'
              END AS risk_level
-      FROM customers
-      WHERE credit_balance > 0
+      FROM customers c
+      WHERE credit_balance > 0 ${branchFilter}
       ORDER BY credit_balance DESC
-    `);
+    `, branchParams);
 
-    const totalRow = query(db, 'SELECT COALESCE(SUM(credit_balance), 0) AS total_ar FROM customers')[0];
+    const totalSql = branch_id && branch_id !== 'all'
+      ? 'SELECT COALESCE(SUM(credit_balance), 0) AS total_ar FROM customers WHERE branch_id = ?'
+      : 'SELECT COALESCE(SUM(credit_balance), 0) AS total_ar FROM customers';
+    const totalRow = query(db, totalSql, branchParams)[0];
     const totalAR = totalRow.total_ar;
     const b2bCount = customers.filter(c => c.segment === 'b2b').length;
     const overdue30 = customers.filter(c => c.risk_level === 'HIGH').reduce((sum, c) => sum + c.credit_balance, 0);

@@ -4,9 +4,10 @@ const { getDb, query, exec } = require('../db/database');
 async function getZReports(req, res) {
   try {
     const db = await getDb();
-    const { type } = req.query;
+    const { type, branch_id } = req.query;
     let sql = 'SELECT * FROM z_reports WHERE 1=1';
     const params = [];
+    if (branch_id && branch_id !== 'all') { sql += ' AND branch_name = (SELECT name FROM branches WHERE id = ?)'; params.push(branch_id); }
     if (type) { sql += ' AND report_type = ?'; params.push(type); }
     sql += ' ORDER BY created_at DESC LIMIT 50';
     const data = query(db, sql, params);
@@ -19,9 +20,11 @@ async function getZReports(req, res) {
 async function generateZReport(req, res) {
   try {
     const db = await getDb();
-    const { report_type, period_label, cashier_name, manager_name, branch_name } = req.body;
+    const { report_type, period_label, cashier_name, manager_name, branch_name, branch_id } = req.body;
 
-    // Aggregate sales data from transactions table for today / active shift
+    // Aggregate sales data scoped to the branch
+    const branchFilter = branch_id && branch_id !== 'all' ? "AND branch_id = ?" : '';
+    const branchParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
     const stats = query(db, `
       SELECT
         COALESCE(SUM(total), 0) AS total_sales,
@@ -33,8 +36,8 @@ async function generateZReport(req, res) {
         COALESCE(SUM(vat), 0) AS vat_collected,
         COALESCE(SUM(subtotal), 0) AS net_revenue
       FROM transactions
-      WHERE status = 'completed'
-    `)[0];
+      WHERE status = 'completed' ${branchFilter}
+    `, branchParams)[0];
 
     const reportNo = 'ZREP-2026-' + Math.floor(1000 + Math.random() * 9000);
     const openingFloat = 5000;
