@@ -90,6 +90,11 @@ app.use((err, req, res, next) => {
 
 // Start Server
 if (require.main === module) {
+  // Graceful exit
+  process.on('SIGINT', () => {
+    console.log('\n[OpenFloat] Server stopped.');
+    process.exit(0);
+  });
   app.listen(PORT, () => {
     console.log(`[OpenFloat POS X] Server running on http://localhost:${PORT}`);
   });

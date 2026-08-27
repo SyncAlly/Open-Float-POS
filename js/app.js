@@ -1179,6 +1179,7 @@ function updateInventoryKPIs(items) {
 function renderInventoryRows(items) {
   const tbody = document.getElementById('inventory-tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   const search = (document.getElementById('inv-search')?.value || '').toLowerCase();
   const cat = document.getElementById('inv-cat-filter')?.value || '';
   const status = document.getElementById('inv-status-filter')?.value || '';
@@ -1214,7 +1215,7 @@ function renderInventoryRows(items) {
       <td>
         <div style="display:flex;gap:4px;">
           <button class="btn-sm tiny secondary" onclick="openProductModal(${item.id})">Edit</button>
-          <button class="btn-sm tiny secondary" style="color:var(--red);" onclick="deleteProduct(${item.id}, '${safeName}')">Delete</button>
+          ${showDelete ? `<button class="btn-sm tiny secondary" style="color:var(--red);" onclick="deleteProduct(${item.id}, '${safeName}')">Delete</button>` : ''}
         </div>
       </td>
     </tr>`;
@@ -1237,7 +1238,7 @@ function updateInventoryBulkActions() {
 
   if (countSpan) countSpan.textContent = count;
   if (btn) {
-    if (count > 0) btn.classList.remove('hidden');
+    if (count > 0 && canDelete()) btn.classList.remove('hidden');
     else btn.classList.add('hidden');
   }
 
@@ -1323,6 +1324,7 @@ function updateSupplierKPIs(items) {
 function renderSupplierRows(items) {
   const tbody = document.getElementById('sup-tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   if (!items.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);">No suppliers found. Add your first supplier!</td></tr>';
     return;
@@ -1341,7 +1343,7 @@ function renderSupplierRows(items) {
       <td style="white-space:nowrap;">
         <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="openSupplierModal(${s.id})">Edit</button>
         <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;" onclick="viewSupplierPOs(${s.id}, '${s.name.replace(/'/g, "\\'")}')">View POs</button>
-        <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);" onclick="deactivateSupplier(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Delete</button>
+        ${showDelete ? `<button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);" onclick="deactivateSupplier(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -1416,6 +1418,23 @@ function exportSuppliersCSV() {
   showToast('Suppliers exported to CSV');
 }
 
+
+// ─── Permission / Role Helpers ──────────────────────────────────────────────
+
+function canDelete() {
+  const role = (state.user?.role || '').toLowerCase();
+  return role === 'owner' || role === 'manager';
+}
+
+function canDeleteEmployee() {
+  const role = (state.user?.role || '').toLowerCase();
+  return role === 'owner';
+}
+
+function canDeleteBranch() {
+  const role = (state.user?.role || '').toLowerCase();
+  return role === 'owner';
+}
 
 // ─── Delete Handler Functions ───────────────────────────────────────────────
 
@@ -1536,6 +1555,7 @@ function filterHPTab(tab, btnEl = null) {
 function renderHPRows(items) {
   const tbody = document.querySelector('#view-hire-purchase table.data-table tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;">No agreements found in this category.</td></tr>';
     return;
@@ -1563,7 +1583,7 @@ function renderHPRows(items) {
       <td><span class="badge ${badge}">${(hp.status || 'active').toUpperCase()}</span></td>
       <td style="white-space:nowrap;">
         ${isCompleted ? '<span class="badge badge-green">SETTLED</span>' : `<button class="btn-sm tiny primary" onclick="recordHPPaymentPrompt(${hp.id}, '${hp.customer_name}', ${hp.balance})">Record Payment</button>`}
-        <button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteHPAgreement(${hp.id}, '${hp.customer_name}')">Delete</button>
+        ${showDelete ? `<button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteHPAgreement(${hp.id}, '${hp.customer_name}')">Delete</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -1643,6 +1663,7 @@ async function loadReceivables() {
 function renderDebtorRows(items) {
   const tbody = document.getElementById('ar-tbody') || document.querySelector('#view-receivables table.data-table tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   if (!items.length) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No outstanding customer debt accounts found.</td></tr>';
     return;
@@ -1658,7 +1679,7 @@ function renderDebtorRows(items) {
       <td><span class="badge ${badge}">${c.risk_level || 'LOW'}</span></td>
       <td style="white-space:nowrap;">
         <button class="btn-sm" style="padding:3px 8px;font-size:11px;" onclick="openARPaymentModal(${c.id})">Record Payment</button>
-        <button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deleteReceivable(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Clear Debt</button>
+        ${showDelete ? `<button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deleteReceivable(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Clear Debt</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -1833,6 +1854,7 @@ function filterCRMCustomers() {
 function renderCRMRows(customers) {
   const tbody = document.getElementById('crm-tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   if (!customers.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted);">No matching customers found.</td></tr>';
     return;
@@ -1851,7 +1873,7 @@ function renderCRMRows(customers) {
       <td><strong>KES ${fmt(c.total_spent || 0)}</strong></td>
       <td style="white-space:nowrap;">
         <button class="btn-sm tiny secondary" onclick="openCustomerModal(${c.id})">Edit</button>
-        <button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteCustomer(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Delete</button>
+        ${showDelete ? `<button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteCustomer(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -1986,6 +2008,7 @@ function updateServicesKPIs(items) {
 function renderServicesRows(items) {
   const tbody = document.querySelector('#view-services table.data-table tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;">No services catalog items found.</td></tr>';
     return;
@@ -2002,8 +2025,10 @@ function renderServicesRows(items) {
       <td>${s.vat_applicable ? '<span class="badge badge-green">Yes (16%)</span>' : '<span class="badge badge-amber">No (EXEMPT)</span>'}</td>
       <td>${s.available_at || 'All Branches'}</td>
       <td><span class="badge ${badgeClass}">${isActive ? 'Active' : 'Inactive'}</span></td>
-      <td><button class="btn-sm tiny secondary" onclick="openServiceModal(${s.id})">Edit</button>
-          <button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteService(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Delete</button></td>
+      <td>
+        <button class="btn-sm tiny secondary" onclick="openServiceModal(${s.id})">Edit</button>
+        ${showDelete ? `<button class="btn-sm tiny secondary" style="color:var(--red);margin-left:4px;" onclick="deleteService(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}
+      </td>
     </tr>`;
   }).join('');
 }
@@ -2090,6 +2115,7 @@ function filterStockMovements() {
 function renderStockMovementRows(items) {
   const tbody = document.querySelector('#view-stock-movements table.data-table tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px;">No stock movements logged.</td></tr>';
     return;
@@ -2110,7 +2136,7 @@ function renderStockMovementRows(items) {
       <td>${m.reason || '—'}</td>
       <td>${m.recorded_by || 'Staff'}</td>
       <td>${m.branch_name || 'Nairobi Main'}</td>
-      <td><button class="btn-sm tiny secondary" style="color:var(--red);" onclick="deleteStockMovement(${m.id}, '${(m.ref || '').replace(/'/g, "\\'")}')">Delete</button></td>
+      <td>${showDelete ? `<button class="btn-sm tiny secondary" style="color:var(--red);" onclick="deleteStockMovement(${m.id}, '${(m.ref || '').replace(/'/g, "\\'")}')">Delete</button>` : '<span style="color:var(--text-muted);font-size:11px;">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -4188,12 +4214,15 @@ function searchJournalEntries(q) {
 }
 
 function openAccountingEntryModal() {
+  populateAccountingBranchDropdown(state.branchesCache || []);
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
   setVal('je-type', 'expense');
   setVal('je-category', 'Rent');
   setVal('je-description', '');
   setVal('je-amount', '');
-  setVal('je-branch', '1');
+  if (state.branchesCache && state.branchesCache.length) {
+    setVal('je-branch', state.branchesCache[0].id);
+  }
   document.getElementById('journal-entry-modal')?.classList.remove('hidden');
 }
 
@@ -4337,6 +4366,7 @@ async function loadHR() {
 function renderEmployeeRows(items) {
   const tbody = document.getElementById('hr-tbody');
   if (!tbody) return;
+  const showDelete = canDeleteEmployee();
   if (!items.length) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No active staff records found. Add your first employee!</td></tr>';
     return;
@@ -4365,7 +4395,7 @@ function renderEmployeeRows(items) {
       <td style="white-space:nowrap;">
         <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openEmployeeModal(${e.id})">Edit</button>
         <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openAttendanceModal(${e.id})">Attendance</button>
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
+        ${showDelete ? `<button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -4695,6 +4725,7 @@ function renderTopSuppliers(suppliers) {
 function renderPRRows(items, tab = 'all') {
   const tbody = document.getElementById('pr-tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   const filtered = tab === 'all' ? items : items.filter(p => p.status === tab);
   if (!filtered.length) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);">No ${tab === 'all' ? '' : tab + ' '}purchase requests found.</td></tr>`;
@@ -4726,7 +4757,7 @@ function renderPRRows(items, tab = 'all') {
       <td><span class="badge ${badgeClass}">${p.status}</span></td>
       <td style="white-space:nowrap;">${date}</td>
       <td style="white-space:nowrap;">${actionBtns}
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deletePurchaseRequest(${p.id}, '${(p.ref || 'PR-' + p.id).replace(/'/g, "\\'")}')">Delete</button>
+        ${showDelete ? `<button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deletePurchaseRequest(${p.id}, '${(p.ref || 'PR-' + p.id).replace(/'/g, "\\'")}')">Delete</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -5123,6 +5154,7 @@ async function loadBranches() {
 
     renderSettingsBranches(state.branchesCache);
     populateEmpBranchDropdown(state.branchesCache);
+    populateAccountingBranchDropdown(state.branchesCache);
     renderBranchSwitcherModal(state.branchesCache);
     populateZReportBranchSelects(state.branchesCache);
   } catch (e) {
@@ -5133,6 +5165,7 @@ async function loadBranches() {
 function renderSettingsBranches(branches) {
   const tbody = document.getElementById('settings-branches-tbody');
   if (!tbody) return;
+  const showDelete = canDeleteBranch();
 
   if (!branches.length) {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:var(--text-muted);">No store branches found. Click "+ Add Branch" to create one.</td></tr>';
@@ -5143,7 +5176,9 @@ function renderSettingsBranches(branches) {
     const isMain = b.id === 1 || b.name.toLowerCase() === 'main branch';
     const deleteBtn = isMain
       ? '<span style="font-size:11px;color:var(--text-muted);">Primary</span>'
-      : `<button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);" onclick="deleteBranch(${b.id})">Delete</button>`;
+      : (showDelete
+          ? `<button class="btn-sm secondary" style="padding:3px 8px;font-size:11px;color:var(--red);" onclick="deleteBranch(${b.id})">Delete</button>`
+          : '<span style="font-size:11px;color:var(--text-muted);">—</span>');
     return `<tr>
       <td><strong>${b.name}</strong></td>
       <td>${b.location || '—'}</td>
@@ -5155,6 +5190,17 @@ function renderSettingsBranches(branches) {
 
 function populateEmpBranchDropdown(branches = []) {
   const select = document.getElementById('emp-branch');
+  if (!select) return;
+  const currentVal = select.value;
+  const list = branches.length ? branches : [{ id: 1, name: 'Main Branch' }];
+  select.innerHTML = list.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+  if (currentVal && list.some(b => String(b.id) === String(currentVal))) {
+    select.value = currentVal;
+  }
+}
+
+function populateAccountingBranchDropdown(branches = []) {
+  const select = document.getElementById('je-branch');
   if (!select) return;
   const currentVal = select.value;
   const list = branches.length ? branches : [{ id: 1, name: 'Main Branch' }];
@@ -5202,6 +5248,10 @@ function populateZReportBranchSelects(branches = []) {
   // Stock movement modal store select
   const movSel = document.getElementById('mov-store-select');
   if (movSel) movSel.innerHTML = branchOptions;
+
+  // Accounting modal branch select
+  const jeSel = document.getElementById('je-branch');
+  if (jeSel) jeSel.innerHTML = branchOptions;
 }
 
 function openAddBranchModal() {
@@ -5738,6 +5788,7 @@ function renderActiveDeliveries(items) {
 function renderDeliveryRows(items, tab = 'all') {
   const tbody = document.getElementById('del-tbody');
   if (!tbody) return;
+  const showDelete = canDelete();
   const filtered = tab === 'all' ? items : items.filter(d => d.status === tab);
   if (!filtered.length) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);">No ${tab === 'all' ? '' : tab.replace('_',' ') + ' '}deliveries found.</td></tr>`;
@@ -5766,7 +5817,7 @@ function renderDeliveryRows(items, tab = 'all') {
       <td>${d.eta || '—'}</td>
       <td><span class="badge ${badge}">${label}</span></td>
       <td style="white-space:nowrap;">${actions}
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deleteDelivery(${d.id}, '${(d.ref || '').replace(/'/g, "\\'")}')">Delete</button>
+        ${showDelete ? `<button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);margin-left:4px;" onclick="deleteDelivery(${d.id}, '${(d.ref || '').replace(/'/g, "\\'")}')">Delete</button>` : ''}
       </td>
     </tr>`;
   }).join('');

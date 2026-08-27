@@ -2,6 +2,7 @@
 
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
 const ctrl = require('../controllers/procurementController');
 
 // GET  /api/procurement/suppliers         — active suppliers list
@@ -17,6 +18,6 @@ router.post('/requests', requireAuth, ctrl.createPurchaseRequest);
 router.patch('/requests/:id/status', requireAuth, ctrl.updatePRStatus);
 
 // DELETE /api/procurement/requests/:id — delete PR
-router.delete('/requests/:id', requireAuth, ctrl.deletePurchaseRequest);
+router.delete('/requests/:id', requireAuth, requireRole('owner', 'manager'), ctrl.deletePurchaseRequest);
 
 module.exports = router;
