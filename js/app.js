@@ -12,8 +12,55 @@ const state = {
   chartInstances: {},
   heldOrders: [],
   branchesCache: [],
-  notifsRead: false
+  notifsRead: false,
+  settingsCache: {}
 };
+
+/* ── SETTINGS HELPERS ──────────────────────────────────────────────
+   These read from state.settingsCache so they always reflect the
+   most-recently saved value without requiring a page reload.
+─────────────────────────────────────────────────────────────────── */
+function getVatRate() {
+  const r = parseFloat(state.settingsCache && state.settingsCache.vat_rate);
+  return (!isNaN(r) && r >= 0) ? r : 16;
+}
+
+function getCurrency() {
+  return (state.settingsCache && state.settingsCache.currency) || 'KES';
+}
+
+function getBusinessName() {
+  return (state.settingsCache && state.settingsCache.business_name) || 'OpenFloat POS';
+}
+
+/**
+ * Push live settings values into every part of the UI that shows them:
+ * – Cart VAT label, currency symbols, business name in receipts, etc.
+ * Called after loadSettings() and after saveSettings() succeeds.
+ */
+function applySettingsToUI() {
+  const vatRate = getVatRate();
+  const currency = getCurrency();
+  const bizName = getBusinessName();
+
+  // Cart VAT label (Register)
+  const vatLabel = document.getElementById('cart-vat-label');
+  if (vatLabel) vatLabel.textContent = `VAT (${vatRate}%)`;
+
+  // Currency symbol on cart subtotal / total (static spans don't have live IDs,
+  // so we re-render the cart if items are present)
+  if (state.cart && state.cart.length > 0) renderCart();
+
+  // Receipt header business name (if visible)
+  const receiptBiz = document.getElementById('receipt-biz-name');
+  if (receiptBiz) receiptBiz.textContent = bizName;
+
+  // Settings page: reflect currency selector
+  const currEl = document.getElementById('set-currency');
+  if (currEl && currEl.value !== currency && !document.activeElement?.id?.includes('set-')) {
+    currEl.value = currency;
+  }
+}
 
 /* AUTHENTICATION HANDLERS */
 function fillDemoLogin(email, password) {
@@ -122,6 +169,7 @@ function completeLogin() {
   loadInventory();
   loadCustomers();
   loadBranches(); // Load branches after authentication
+  loadSettingsCache(); // Always fetch settings on login so VAT/currency are live
   if (state.user?.role === 'owner' || state.user?.role === 'manager') {
     loadDashboardKPIs();
   }
@@ -2022,7 +2070,7 @@ function renderServicesRows(items) {
       <td><span class="service-chip">${s.category || 'General'}</span></td>
       <td>${s.unit || 'Per Session'}</td>
       <td><strong>${fmt(s.price)}</strong></td>
-      <td>${s.vat_applicable ? '<span class="badge badge-green">Yes (16%)</span>' : '<span class="badge badge-amber">No (EXEMPT)</span>'}</td>
+      <td>${s.vat_applicable ? `<span class="badge badge-green">Yes (${getVatRate()}%)</span>` : '<span class="badge badge-amber">No (EXEMPT)</span>'}</td>
       <td>${s.available_at || 'All Branches'}</td>
       <td><span class="badge ${badgeClass}">${isActive ? 'Active' : 'Inactive'}</span></td>
       <td>
@@ -2415,7 +2463,7 @@ function renderZReportPreview(rep) {
     <div class="zr-row"><span>Discounts Given:</span><span style="color:var(--red);">- ${formatKES(rep.discounts)}</span></div>
     <div class="zr-divider"></div>
     <div class="zr-row"><span>Gross Sales Revenue:</span><span>${formatKES(rep.total_sales)}</span></div>
-    <div class="zr-row"><span>VAT Collected (16%):</span><span>${formatKES(rep.vat_collected)}</span></div>
+    <div class="zr-row"><span>VAT Collected (${getVatRate()}%):</span><span>${formatKES(rep.vat_collected)}</span></div>
     <div class="zr-row total"><span>Net Revenue:</span><span style="color:var(--green);">${formatKES(rep.net_revenue)}</span></div>
     <div class="zr-divider"></div>
     <div class="zr-row"><span>Closing Cash in Drawer:</span><span style="font-weight:700;">${formatKES(rep.closing_cash)}</span></div>
@@ -2832,20 +2880,28 @@ function renderCart() {
   `;
   }).join('');
 
-  const subtotal = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const vat = Math.round(subtotal * 0.16);
-  const total = subtotal + vat;
-
-  updateCartTotals(subtotal, 0, vat, total);
+  const { subtotal, discount, vat, grandTotal } = getCartTotals();
+  updateCartTotals(subtotal, discount, vat, grandTotal);
 }
 
 function updateCartTotals(sub, disc, vat, grandTotal) {
-  const total = grandTotal || (sub - disc + vat);
-  document.getElementById('cart-subtotal').textContent = `KES ${fmt(sub)}.00`;
-  document.getElementById('cart-discount').textContent = `- KES ${fmt(disc)}.00`;
-  document.getElementById('cart-vat').textContent = `KES ${fmt(vat)}.00`;
-  document.getElementById('cart-total').textContent = `KES ${fmt(total)}.00`;
-  document.getElementById('charge-total').textContent = `KES ${fmt(total)}.00`;
+  const total = grandTotal !== undefined ? grandTotal : (sub - (disc || 0) + vat);
+  const currency = getCurrency();
+  const subEl = document.getElementById('cart-subtotal');
+  const discEl = document.getElementById('cart-discount');
+  const vatEl = document.getElementById('cart-vat');
+  const totEl = document.getElementById('cart-total');
+  const chgTotEl = document.getElementById('charge-total');
+
+  if (subEl) subEl.textContent = `${currency} ${fmt(sub)}.00`;
+  if (discEl) discEl.textContent = `- ${currency} ${fmt(disc || 0)}.00`;
+  if (vatEl) vatEl.textContent = `${currency} ${fmt(vat)}.00`;
+  if (totEl) totEl.textContent = `${currency} ${fmt(total)}.00`;
+  if (chgTotEl) chgTotEl.textContent = `${currency} ${fmt(total)}.00`;
+
+  // Keep the VAT label in sync with the live rate
+  const vatLabel = document.getElementById('cart-vat-label');
+  if (vatLabel) vatLabel.textContent = `VAT (${getVatRate()}%)`;
 
   calcChange();
   calcSplit();
@@ -2853,20 +2909,123 @@ function updateCartTotals(sub, disc, vat, grandTotal) {
 
 function clearCart() {
   state.cart = [];
+  _discountValue = 0;
+  _activeDiscountAmt = 0;
   renderCart();
   showToast('Cart cleared');
 }
 
+/* ── DISCOUNT MODAL & CART TOTALS ────────────────────────────────── */
+let _discountType = 'pct'; // 'pct' | 'fixed'
+let _discountValue = 0; // percentage or fixed amount entered by user
+let _activeDiscountAmt = 0; // calculated currency amount
+
+/**
+ * Single source of truth for all cart totals (subtotal, discount, VAT, grand total).
+ * Ensures change calculation, split payment, STK push, and checkout always use
+ * the exact post-discount, post-VAT grand total.
+ */
+function getCartTotals() {
+  const subtotal = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
+  let discount = 0;
+  if (_discountValue > 0) {
+    if (_discountType === 'pct') {
+      discount = Math.round(subtotal * (_discountValue / 100));
+    } else {
+      discount = Math.round(_discountValue);
+    }
+    discount = Math.min(discount, subtotal);
+  }
+  _activeDiscountAmt = discount;
+  const vatRate = getVatRate();
+  const taxable = Math.max(0, subtotal - discount);
+  const vat = Math.round(taxable * (vatRate / 100));
+  const grandTotal = taxable + vat;
+  return { subtotal, discount, vatRate, vat, grandTotal, taxable };
+}
+
 function applyDiscount() {
   if (state.cart.length === 0) { showToast('Cart is empty'); return; }
-  const pct = prompt('Enter discount percentage:', '10');
-  if (pct && !isNaN(pct)) {
-    const sub = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
-    const disc = Math.round(sub * (parseFloat(pct) / 100));
-    const vat = Math.round((sub - disc) * 0.16);
-    updateCartTotals(sub, disc, vat, (sub - disc + vat));
-    showToast(`${pct}% discount applied`);
+
+  // Reset modal state
+  _discountType = 'pct';
+  const input = document.getElementById('disc-value');
+  if (input) { input.value = ''; input.oninput = updateDiscountPreview; }
+  setDiscountType('pct');
+  updateDiscountPreview();
+  document.getElementById('discount-modal')?.classList.remove('hidden');
+  setTimeout(() => document.getElementById('disc-value')?.focus(), 80);
+}
+
+function setDiscountType(type) {
+  _discountType = type;
+  const pctBtn   = document.getElementById('disc-type-pct');
+  const fixedBtn = document.getElementById('disc-type-fixed');
+  const label    = document.getElementById('disc-input-label');
+  const input    = document.getElementById('disc-value');
+
+  if (type === 'pct') {
+    if (pctBtn)   { pctBtn.style.background = 'var(--brand)'; pctBtn.style.color = '#fff'; pctBtn.classList.remove('secondary'); }
+    if (fixedBtn) { fixedBtn.style.background = ''; fixedBtn.style.color = ''; fixedBtn.classList.add('secondary'); }
+    if (label)    label.textContent = 'Discount Percentage (%)';
+    if (input)    { input.placeholder = 'e.g. 10'; input.max = '100'; }
+  } else {
+    if (fixedBtn) { fixedBtn.style.background = 'var(--brand)'; fixedBtn.style.color = '#fff'; fixedBtn.classList.remove('secondary'); }
+    if (pctBtn)   { pctBtn.style.background = ''; pctBtn.style.color = ''; pctBtn.classList.add('secondary'); }
+    if (label)    label.textContent = `Fixed Discount Amount (${getCurrency()})`;
+    if (input)    { input.placeholder = 'e.g. 500'; input.removeAttribute('max'); }
   }
+  updateDiscountPreview();
+}
+
+function updateDiscountPreview() {
+  const sub     = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const val     = parseFloat(document.getElementById('disc-value')?.value) || 0;
+  const cur     = getCurrency();
+  const vatRate = getVatRate();
+
+  let disc = 0;
+  if (_discountType === 'pct') {
+    disc = Math.min(Math.round(sub * (val / 100)), sub);
+  } else {
+    disc = Math.min(val, sub);
+  }
+
+  const vat   = Math.round((sub - disc) * (vatRate / 100));
+  const total = sub - disc + vat;
+
+  const subEl   = document.getElementById('disc-preview-sub');
+  const discEl  = document.getElementById('disc-preview-disc');
+  const totalEl = document.getElementById('disc-preview-total');
+
+  if (subEl)   subEl.textContent   = `${cur} ${fmt(sub)}.00`;
+  if (discEl)  discEl.textContent  = disc > 0 ? `- ${cur} ${fmt(disc)}.00` : '—';
+  if (totalEl) totalEl.textContent = `${cur} ${fmt(total)}.00`;
+}
+
+function confirmDiscount() {
+  if (state.cart.length === 0) { showToast('Cart is empty'); return; }
+
+  const val = parseFloat(document.getElementById('disc-value')?.value);
+  if (isNaN(val) || val <= 0) { showToast('Enter a valid discount amount'); return; }
+
+  const sub = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+  if (_discountType === 'pct') {
+    if (val > 100) { showToast('Percentage cannot exceed 100%'); return; }
+    _discountValue = val;
+    const disc = Math.round(sub * (val / 100));
+    _activeDiscountAmt = disc;
+    showToast(`${val}% discount applied (${getCurrency()} ${fmt(disc)})`);
+  } else {
+    if (val > sub) { showToast(`Discount cannot exceed subtotal of ${getCurrency()} ${fmt(sub)}`); return; }
+    _discountValue = val;
+    _activeDiscountAmt = Math.round(val);
+    showToast(`${getCurrency()} ${fmt(_activeDiscountAmt)} discount applied`);
+  }
+
+  renderCart();
+  closeModal('discount-modal');
 }
 
 function holdOrder() {
@@ -3027,7 +3186,10 @@ async function viewTxnDetail(txId) {
 
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Subtotal:</span><span>KES ${fmt(txn.subtotal || txn.total || 0)}</span></div>
       ${txn.discount ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px;color:var(--green);"><span>Discount:</span><span>- KES ${fmt(txn.discount)}</span></div>` : ''}
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--text-muted);"><span>VAT (16% Included):</span><span>KES ${fmt(txn.vat || 0)}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--text-muted);"><span>VAT (${(() => {
+        const net = (txn.subtotal || txn.total || 0) - (txn.discount || 0);
+        return (txn.vat !== undefined && txn.vat !== null && net > 0) ? Math.round((txn.vat / net) * 100) : getVatRate();
+      })()}% Included):</span><span>KES ${fmt(txn.vat || 0)}</span></div>
       <div style="display:flex;justify-content:space-between;border-top:2px solid var(--text-primary);padding-top:6px;font-size:14px;font-weight:700;">
         <span>TOTAL AMOUNT:</span><span>KES ${fmt(txn.total || 0)}</span>
       </div>
@@ -3046,6 +3208,8 @@ function printCurrentTxnReceipt() {
   const items = txn.items && txn.items.length ? txn.items : [
     { product_name: 'Product Order', qty: 1, unit_price: txn.total, line_total: txn.total }
   ];
+  const netTaxable = (txn.subtotal || txn.total || 0) - (txn.discount || 0);
+  const vatPct = (txn.vat !== undefined && txn.vat !== null && netTaxable > 0) ? Math.round((txn.vat / netTaxable) * 100) : getVatRate();
 
   const html = `<html><head><title>Receipt - ${ref}</title>
   <style>
@@ -3076,7 +3240,7 @@ function printCurrentTxnReceipt() {
     `).join('')}
     <hr>
     <div class="row"><span>Subtotal:</span><span>KES ${fmt(txn.subtotal || txn.total || 0)}</span></div>
-    <div class="row"><span>VAT (16%):</span><span>KES ${fmt(txn.vat || 0)}</span></div>
+    <div class="row"><span>VAT (${vatPct}%):</span><span>KES ${fmt(txn.vat || 0)}</span></div>
     <div class="row total"><span>TOTAL PAID:</span><span>KES ${fmt(txn.total || 0)}</span></div>
     <hr>
     <p style="margin-top:12px;">Thank you for your business!</p>
@@ -3269,32 +3433,30 @@ function setTender(amt) {
 }
 
 function setExact() {
-  const sub = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const vat = Math.round(sub * 0.16);
-  const total = sub + vat;
+  const { grandTotal } = getCartTotals();
   const input = document.getElementById('tendered-amount');
   if (input) {
-    input.value = total;
+    input.value = grandTotal;
     calcChange();
     updateNumpadDisplay();
   }
 }
 
 function calcChange() {
-  const sub = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const total = sub + Math.round(sub * 0.16);
+  const { grandTotal } = getCartTotals();
   const tendered = parseFloat(document.getElementById('tendered-amount')?.value) || 0;
-  const change = Math.max(0, tendered - total);
-  document.getElementById('change-amount').textContent = `KES ${fmt(change)}.00`;
+  const change = Math.max(0, tendered - grandTotal);
+  const changeEl = document.getElementById('change-amount');
+  if (changeEl) changeEl.textContent = `${getCurrency()} ${fmt(change)}.00`;
 }
 
 function calcSplit() {
-  const sub = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const total = sub + Math.round(sub * 0.16);
+  const { grandTotal } = getCartTotals();
   const cash = parseFloat(document.getElementById('split-cash')?.value) || 0;
   const mpesa = parseFloat(document.getElementById('split-mpesa')?.value) || 0;
-  const remaining = Math.max(0, total - (cash + mpesa));
-  document.getElementById('split-remaining').textContent = `KES ${fmt(remaining)}.00`;
+  const remaining = Math.max(0, grandTotal - (cash + mpesa));
+  const remEl = document.getElementById('split-remaining');
+  if (remEl) remEl.textContent = `${getCurrency()} ${fmt(remaining)}.00`;
 }
 
 async function triggerSTK() {
@@ -3308,11 +3470,10 @@ async function triggerSTK() {
     return;
   }
 
-  // Calculate total from current cart
-  const subtotal = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const total    = subtotal + Math.round(subtotal * 0.16);
+  // Calculate total from current cart using unified source of truth
+  const { grandTotal } = getCartTotals();
 
-  if (total <= 0) {
+  if (grandTotal <= 0) {
     showToast('Cart is empty — nothing to charge');
     return;
   }
@@ -3445,14 +3606,12 @@ let _lastReceiptData = null;
 async function processPayment() {
   if (state.cart.length === 0) { showToast('Cart is empty'); return; }
 
-  const subtotal = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const vat = Math.round(subtotal * 0.16);
-  const total = subtotal + vat;
+  const { subtotal, discount, vatRate, vat, grandTotal } = getCartTotals();
   const custSelect = document.getElementById('cart-customer');
   const custId = custSelect && custSelect.value ? parseInt(custSelect.value) : null;
   const custName = custSelect ? custSelect.selectedOptions[0]?.text : 'Walk-in Customer';
-  const tendered = parseFloat(document.getElementById('tendered-amount')?.value) || total;
-  const changeAmt = Math.max(0, tendered - total);
+  const tendered = parseFloat(document.getElementById('tendered-amount')?.value) || grandTotal;
+  const changeAmt = Math.max(0, tendered - grandTotal);
   const cartItemsSnapshot = state.cart.map(i => ({ ...i }));
   const payMethod = state.selectedPayMethod || 'cash';
 
@@ -3465,8 +3624,8 @@ async function processPayment() {
       discount: 0,
       line_total: item.price * item.qty
     })),
-    discount: 0,
-    vat_rate: 16,
+    discount: discount,
+    vat_rate: vatRate,
     payment_method: payMethod,
     notes: 'POS Cashier Order'
   };
@@ -3495,28 +3654,36 @@ async function processPayment() {
   }
 
   // 1. Show receipt modal immediately using order snapshot
-  previewReceipt(txRef, custName, subtotal, vat, total, cartItemsSnapshot, payMethod, changeAmt);
+  previewReceipt(txRef, custName, subtotal, vat, grandTotal, cartItemsSnapshot, payMethod, changeAmt, discount);
 
   // 2. Clear cart & reset tendered inputs for next sale
   state.cart = [];
+  _discountValue = 0;
+  _activeDiscountAmt = 0;
   renderCart();
   const tendEl = document.getElementById('tendered-amount');
   if (tendEl) tendEl.value = '';
   const changeEl = document.getElementById('change-amount');
-  if (changeEl) changeEl.textContent = 'KES 0.00';
+  if (changeEl) changeEl.textContent = `${getCurrency()} 0.00`;
 
   // 3. Refresh live inventory & dashboard KPIs
   loadPOSProducts();
   loadDashboardKPIs();
 }
 
-function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, changeAmt) {
+function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, changeAmt, discount) {
+  const { subtotal: cSub, discount: cDisc, vat: cVat, grandTotal: cTot } = getCartTotals();
+  const vatRate = getVatRate();
+  const discAmt = discount !== undefined ? discount : cDisc;
+
   if (items && items.length > 0) {
     _lastReceiptData = {
       ref: ref || ('TXN-' + Math.random().toString(36).substring(2,8).toUpperCase()),
       customerName: customerName || 'Walk-in Customer',
       subtotal: sub,
+      discount: discAmt || 0,
       vat: vat,
+      vatRate: vatRate,
       total: total,
       items: items.map(i => ({ ...i })),
       payMethod: payMethod || state.selectedPayMethod || 'cash',
@@ -3525,22 +3692,21 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
       dateStr: new Date().toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
     };
   } else if (state.cart.length > 0) {
-    const subtotal = state.cart.reduce((s, i) => s + i.price * i.qty, 0);
-    const vatAmt = Math.round(subtotal * 0.16);
-    const totalAmt = subtotal + vatAmt;
     const custSelect = document.getElementById('cart-customer');
     const custName = custSelect ? custSelect.selectedOptions[0]?.text : 'Walk-in Customer';
-    const tendered = parseFloat(document.getElementById('tendered-amount')?.value) || totalAmt;
+    const tendered = parseFloat(document.getElementById('tendered-amount')?.value) || cTot;
 
     _lastReceiptData = {
       ref: ref || ('TXN-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.random().toString(36).substring(2,6).toUpperCase()),
       customerName: custName,
-      subtotal: subtotal,
-      vat: vatAmt,
-      total: totalAmt,
+      subtotal: cSub,
+      discount: cDisc || 0,
+      vat: cVat,
+      vatRate: vatRate,
+      total: cTot,
       items: state.cart.map(i => ({ ...i })),
       payMethod: state.selectedPayMethod || 'cash',
-      changeAmt: Math.max(0, tendered - totalAmt),
+      changeAmt: Math.max(0, tendered - cTot),
       cashierName: state.user ? state.user.name : 'Owner',
       dateStr: new Date().toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
     };
@@ -3552,6 +3718,8 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
   }
 
   const d = _lastReceiptData;
+  const cur = getCurrency();
+  const vatPct = d.vatRate !== undefined ? d.vatRate : getVatRate();
 
   const numEl = document.getElementById('receipt-num');
   if (numEl) numEl.textContent = `Receipt: ${d.ref}`;
@@ -3567,7 +3735,7 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
     itemsContainer.innerHTML = d.items.map(i => `
       <div class="receipt-row">
         <span>${i.qty}x ${i.name}</span>
-        <span>KES ${fmt(i.price * i.qty)}</span>
+        <span>${cur} ${fmt(i.price * i.qty)}</span>
       </div>
     `).join('');
   }
@@ -3576,7 +3744,12 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
   if (summaryContainer) {
     let changeHtml = '';
     if (d.payMethod.toLowerCase() === 'cash' && d.changeAmt > 0) {
-      changeHtml = `<div class="receipt-row" style="color:var(--accent-emerald);font-weight:600;"><span>Change Given:</span><span>KES ${fmt(d.changeAmt)}</span></div>`;
+      changeHtml = `<div class="receipt-row" style="color:var(--accent-emerald);font-weight:600;"><span>Change Given:</span><span>${cur} ${fmt(d.changeAmt)}</span></div>`;
+    }
+
+    let discountHtml = '';
+    if (d.discount > 0) {
+      discountHtml = `<div class="receipt-row" style="color:#ef4444;font-weight:600;"><span>Discount:</span><span>- ${cur} ${fmt(d.discount)}</span></div>`;
     }
 
     let mpesaHtml = '';
@@ -3586,9 +3759,10 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
     }
 
     summaryContainer.innerHTML = `
-      <div class="receipt-row"><span>Subtotal:</span><span>KES ${fmt(d.subtotal)}</span></div>
-      <div class="receipt-row"><span>VAT (16%):</span><span>KES ${fmt(d.vat)}</span></div>
-      <div class="receipt-row" style="font-size:13px;font-weight:700;"><span>TOTAL:</span><span>KES ${fmt(d.total)}</span></div>
+      <div class="receipt-row"><span>Subtotal:</span><span>${cur} ${fmt(d.subtotal)}</span></div>
+      ${discountHtml}
+      <div class="receipt-row"><span>VAT (${vatPct}%):</span><span>${cur} ${fmt(d.vat)}</span></div>
+      <div class="receipt-row" style="font-size:13px;font-weight:700;"><span>TOTAL:</span><span>${cur} ${fmt(d.total)}</span></div>
       ${changeHtml}
       <div class="receipt-row" style="margin-top:4px;color:#6B7280;"><span>Customer:</span><span>${d.customerName}</span></div>
       <div class="receipt-row" style="color:#6B7280;"><span>Payment Method:</span><span style="text-transform:uppercase;">${d.payMethod}</span></div>
@@ -5445,11 +5619,29 @@ const SETTINGS_MAP = {
   cash_drawer:     'set-drawer'
 };
 
+/**
+ * Silently fetch settings into state.settingsCache on login.
+ * Does NOT show any toast or populate form fields — just primes the cache
+ * so getVatRate() / getCurrency() work from the first cart interaction.
+ */
+async function loadSettingsCache() {
+  try {
+    const data = await apiGet('/api/settings');
+    state.settingsCache = data.data || {};
+    applySettingsToUI();
+  } catch (e) {
+    // Network/auth errors: leave defaults (16% VAT, KES)
+  }
+}
+
 async function loadSettings() {
   loadBranches();
   try {
     const data = await apiGet('/api/settings');
     const s = data.data || {};
+
+    // Persist to cache so all helpers pick it up immediately
+    state.settingsCache = s;
 
     // Populate each field from DB, fall back to placeholder if key not saved yet
     Object.entries(SETTINGS_MAP).forEach(([key, elId]) => {
@@ -5459,6 +5651,9 @@ async function loadSettings() {
       if (el.type === 'password' && !s[key]) return;
       el.value = s[key];
     });
+
+    // Apply to live UI (cart VAT label, receipt header, etc.)
+    applySettingsToUI();
 
     showToast('Settings loaded from database');
   } catch (e) {
@@ -5493,6 +5688,10 @@ async function saveSettings() {
     });
     const data = await res.json();
     if (res.ok) {
+      // Merge into cache so all helpers immediately reflect the new values
+      state.settingsCache = { ...state.settingsCache, ...updates };
+      // Push changes into every live UI element that depends on settings
+      applySettingsToUI();
       showToast(`${Object.keys(updates).length} setting(s) saved successfully`);
     } else {
       showToast('Error saving settings: ' + (data.error || 'Unknown error'));

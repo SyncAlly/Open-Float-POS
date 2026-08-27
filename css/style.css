@@ -812,16 +812,25 @@ table { border-collapse: collapse; width: 100%; }
 .login-screen {
   position: fixed; inset: 0; z-index: 10000;
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(circle at 50% 30%, #7C2D12 0%, #1C0A00 100%);
+  background: linear-gradient(135deg, rgba(28, 10, 0, 0.45) 0%, rgba(15, 23, 42, 0.65) 100%),
+              url('../Log-in%20Wallpaper.jpg') center center / cover no-repeat;
   padding: 20px;
 }
 .login-card {
   width: 100%; max-width: 420px;
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: var(--radius-lg);
-  padding: 32px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+  padding: 36px 32px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.2);
   display: flex; flex-direction: column; gap: 20px;
+}
+[data-theme="dark"] .login-card {
+  background: rgba(26, 29, 39, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65);
 }
 .login-header { text-align: center; }
 .login-logo-icon {
