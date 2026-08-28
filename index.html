@@ -446,6 +446,7 @@
           <button class="cat-tab" id="tab-comp-hr" onclick="switchComparisonArea('hr')">Staff &amp; Productivity</button>
           <button class="cat-tab" id="tab-comp-inventory" onclick="switchComparisonArea('inventory')">Inventory &amp; Stock</button>
           <button class="cat-tab" id="tab-comp-channels" onclick="switchComparisonArea('channels')">Payment Channels</button>
+          <button class="cat-tab" id="tab-comp-staffhq" onclick="switchComparisonArea('staffhq')">HR Management</button>
         </div>
 
         <!-- 4 SUMMARY BENCHMARK CARDS -->
@@ -535,6 +536,54 @@
             </table>
           </div>
         </div>
+
+        <!-- ENTERPRISE HR MANAGEMENT SECTION -->
+        <div id="comp-area-staffhq" style="display:none;">
+          <div class="kpi-grid" style="margin-bottom:20px;">
+            <div class="kpi-card">
+              <div class="kpi-header"><span class="kpi-label">Total Enterprise Staff</span><div class="kpi-icon blue"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 14c0-2.76 2.24-5 5-5h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="9" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M9 14c0-1.66 1.34-3 3-3s3 1.34 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div></div>
+              <div class="kpi-value" id="hq-hr-kpi-total">-</div>
+              <div class="kpi-trend up">All active branches</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-header"><span class="kpi-label">Monthly Payroll</span><div class="kpi-icon purple"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M3 5h7a3 3 0 010 6H3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div></div>
+              <div class="kpi-value" id="hq-hr-kpi-payroll">-</div>
+              <div class="kpi-trend up">Enterprise total</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-header"><span class="kpi-label">Avg Attendance Rate</span><div class="kpi-icon green"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div></div>
+              <div class="kpi-value" id="hq-hr-kpi-attendance">-</div>
+              <div class="kpi-trend up" id="hq-hr-kpi-present">Across all branches</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-header"><span class="kpi-label">Absent / On Leave</span><div class="kpi-icon amber"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M2 7h12M5.5 1v3M10.5 1v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div></div>
+              <div class="kpi-value" id="hq-hr-kpi-leave">-</div>
+              <div class="kpi-trend down" id="hq-hr-kpi-leave-sub">Status count</div>
+            </div>
+          </div>
+          <div class="panel-card" style="padding:20px;">
+            <div class="panel-header" style="margin-bottom:16px;">
+              <div>
+                <h3 style="margin:0;">Enterprise Employee Directory</h3>
+                <p style="font-size:12px;color:var(--text-muted);margin-top:2px;">All staff across every operational branch</p>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <select id="hq-hr-branch-filter" class="form-field-input" style="width:160px;padding:5px 8px;font-size:12px;" onchange="filterHQHRByBranch(this.value)">
+                  <option value="all">All Branches</option>
+                </select>
+                <input class="form-field-input" id="hq-hr-search" placeholder="Search staff..." oninput="filterHQHRSearch(this.value)" style="width:180px;font-size:12px;padding:5px 8px;"/>
+                <button class="btn-sm" onclick="openEmployeeModal()">+ Add Employee</button>
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table" style="width:100%;">
+                <thead><tr><th>Employee</th><th>Role</th><th>Branch</th><th>Status</th><th>Salary</th><th>Attendance</th><th>Actions</th></tr></thead>
+                <tbody id="hq-hr-tbody"><tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">Loading enterprise staff directory...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!-- END ENTERPRISE HR MANAGEMENT -->
       </div>
 
       <!-- ════════════ VIEW: SALES / POS ════════════ -->

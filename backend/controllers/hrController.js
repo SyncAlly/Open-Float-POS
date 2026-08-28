@@ -84,10 +84,14 @@ async function updateEmployee(req, res) {
 async function deleteEmployee(req, res) {
   try {
     const db = await getDb();
+    const existing = query(db, 'SELECT email FROM employees WHERE id = ?', [req.params.id]);
+    if (existing.length && existing[0].email) {
+      exec(db, 'UPDATE users SET is_active = 0 WHERE LOWER(email) = ? AND role != "owner"', [existing[0].email.toLowerCase()]);
+    }
     exec(db, 'DELETE FROM attendance WHERE employee_id = ?', [req.params.id]);
     const result = exec(db, 'DELETE FROM employees WHERE id = ?', [req.params.id]);
     if (!result.changes) return res.status(404).json({ error: 'Employee not found.' });
-    res.json({ success: true, message: 'Employee deleted from database.' });
+    res.json({ success: true, message: 'Employee and login credentials removed.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 }
 

@@ -763,15 +763,54 @@ function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('collapsed', state.sidebarCollapsed);
 }
 
+function updateAllChartsTheme() {
+  const d = getChartDefaults();
+  Object.values(state.chartInstances || {}).forEach(chart => {
+    if (!chart || typeof chart.update !== 'function') return;
+    try {
+      if (chart.options && chart.options.scales) {
+        Object.values(chart.options.scales).forEach(scale => {
+          if (scale.grid) scale.grid.color = d.gridColor;
+          if (scale.ticks) scale.ticks.color = d.textColor;
+        });
+      }
+      if (chart.options?.plugins?.legend?.labels) {
+        chart.options.plugins.legend.labels.color = d.textColor;
+      }
+      chart.update('none'); // Fast update without destroying data or re-animating from 0
+    } catch (err) {
+      console.warn('[updateAllChartsTheme]', err);
+    }
+  });
+}
+
 function cycleTheme() {
   state.theme = state.theme === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', state.theme);
+  localStorage.setItem('theme', state.theme);
   showToast(state.theme === 'dark' ? 'Dark mode enabled' : 'Light mode enabled');
+  
+  // Immediately update colors on all existing charts without destroying them
+  updateAllChartsTheme();
+
+  // Re-sync active view's charts to ensure full layout fidelity
   setTimeout(() => {
-    Object.values(state.chartInstances).forEach(c => c.destroy && c.destroy());
-    state.chartInstances = {};
-    initCharts();
-  }, 200);
+    updateAllChartsTheme();
+    const v = state.currentView;
+    if (v === 'dashboard') {
+      loadDashboardKPIs();
+    } else if (v === 'accounting') {
+      loadAccounting();
+    } else if (v === 'hr') {
+      loadHR();
+    } else if (v === 'procurement') {
+      loadProcurement();
+    } else if (v === 'crm') {
+      loadCRM();
+    } else if (v === 'branch-comparison') {
+      loadBranchComparisonView();
+    }
+  }, 50);
 }
 
 function toggleNotifications() {
@@ -1197,12 +1236,14 @@ async function loadDashboardKPIs() {
       `;
     }
 
+    if (!state.chartInstances.payment) initPaymentChart();
     if (state.chartInstances.payment) {
       state.chartInstances.payment.data.datasets[0].data = pTotal > 0 ? [pCounts.cash, pCounts.mpesa, pCounts.card, pCounts.credit] : [0, 0, 0, 0];
       state.chartInstances.payment.update();
     }
 
     // 4. Revenue & Profit Line Chart
+    if (!state.chartInstances.revenue) initRevenueChart();
     if (state.chartInstances.revenue) {
       const revData = totalRev > 0
         ? [Math.round(totalRev * 0.7), Math.round(totalRev * 0.75), Math.round(totalRev * 0.85), Math.round(totalRev * 0.8), Math.round(totalRev * 0.95), Math.round(totalRev)]
@@ -1442,13 +1483,35 @@ function switchComparisonArea(area) {
   _compArea = area;
   _compMetric = 'm1'; // reset to first metric
 
-  // Update tabs
-  ['sales', 'hr', 'inventory', 'channels'].forEach(a => {
+  // Update tabs (include staffhq)
+  ['sales', 'hr', 'inventory', 'channels', 'staffhq'].forEach(a => {
     const tab = document.getElementById(`tab-comp-${a}`);
     if (tab) tab.classList.toggle('active', a === area);
   });
 
-  // Update pill buttons labels
+  // Toggle chart panel and HR section visibility
+  const chartPanel   = document.querySelector('#view-branch-comparison .panel-card:has(canvas)') ||
+                       document.getElementById('compPageMainChart')?.closest('.panel-card');
+  const matrixPanel  = document.getElementById('comp-matrix-tbody')?.closest('.panel-card');
+  const hrSection    = document.getElementById('comp-area-staffhq');
+  const metricPills  = document.getElementById('comp-metric-pills');
+
+  const isHR = (area === 'staffhq');
+
+  // Show/hide chart area panels
+  if (chartPanel)  chartPanel.style.display  = isHR ? 'none' : '';
+  if (matrixPanel) matrixPanel.style.display = isHR ? 'none' : '';
+  if (metricPills) metricPills.style.display = isHR ? 'none' : '';
+
+  // Show/hide enterprise HR section
+  if (hrSection) hrSection.style.display = isHR ? '' : 'none';
+
+  if (isHR) {
+    loadHQHR();
+    return;
+  }
+
+  // Update pill buttons labels for chart-based areas
   const pill1 = document.getElementById('btn-comp-m1');
   const pill2 = document.getElementById('btn-comp-m2');
   const pill3 = document.getElementById('btn-comp-m3');
@@ -1705,6 +1768,127 @@ function renderBranchComparisonMatrixTable() {
       </tr>
     `;
   }).join('');
+}
+
+/* ── ENTERPRISE HR MANAGEMENT (HQ — Owner Only) ─────────────────────────── */
+let _hqHRAllEmployees = []; // full enterprise employee list
+let _hqHRFiltered = [];     // currently filtered/searched subset
+
+async function loadHQHR() {
+  // Only owner should access this — branch-comparison view already guards this
+  if (state.user?.role !== 'owner') return;
+
+  const tbody = document.getElementById('hq-hr-tbody');
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const fmtKES = n => getCurrency() + ' ' + fmt(Math.round(n || 0));
+
+  if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;"><span class="spinner-sm"></span> Loading...</td></tr>';
+
+  try {
+    const [empRes, summaryRes] = await Promise.all([
+      apiGet('/api/hr/employees'),           // no branch_id = all employees enterprise-wide
+      apiGet('/api/hr/payroll/summary')      // no branch_id = enterprise totals
+    ]);
+
+    _hqHRAllEmployees = (empRes?.data || []);
+    _hqHRFiltered = [..._hqHRAllEmployees];
+
+    // Populate branch filter dropdown
+    const branchFilter = document.getElementById('hq-hr-branch-filter');
+    if (branchFilter) {
+      const branches = [...new Map(_hqHRAllEmployees.map(e => [e.branch_id, { id: e.branch_id, name: e.branch_name }])).values()]
+        .filter(b => b.id);
+      branchFilter.innerHTML = '<option value="all">All Branches</option>' +
+        branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    }
+
+    // KPI cards
+    const d = summaryRes?.data || {};
+    const totalEmp = _hqHRAllEmployees.length;
+    const payroll  = _hqHRAllEmployees.reduce((s, e) => s + (e.salary || 0), 0);
+    const avgAtt   = totalEmp > 0
+      ? Math.round(_hqHRAllEmployees.reduce((s, e) => s + (e.attendance_pct || 0), 0) / totalEmp)
+      : 0;
+    const absent   = _hqHRAllEmployees.filter(e => e.status === 'absent').length;
+    const onLeave  = _hqHRAllEmployees.filter(e => e.status === 'on_leave').length;
+
+    setEl('hq-hr-kpi-total',      totalEmp);
+    setEl('hq-hr-kpi-payroll',    fmtKES(payroll));
+    setEl('hq-hr-kpi-attendance', avgAtt + '%');
+    setEl('hq-hr-kpi-present',    `${d.present_today || 0} present today`);
+    setEl('hq-hr-kpi-leave',      absent + onLeave);
+    setEl('hq-hr-kpi-leave-sub',  `${onLeave} on leave · ${absent} absent`);
+
+    // Also sync _hrEmployeesCache so Edit modal can find employees
+    _hrEmployeesCache = _hqHRAllEmployees;
+
+    renderHQHRRows(_hqHRFiltered);
+
+  } catch (err) {
+    console.error('[loadHQHR] Error:', err);
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--red);">Failed to load enterprise HR data.</td></tr>';
+  }
+}
+
+function renderHQHRRows(items) {
+  const tbody = document.getElementById('hq-hr-tbody');
+  if (!tbody) return;
+
+  if (!items || !items.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No employees found matching this filter.</td></tr>';
+    return;
+  }
+
+  const statusMap = { present: 'badge-green', on_leave: 'badge-amber', absent: 'badge-red', terminated: 'badge-red' };
+  const colors    = ['#FFF7ED;color:#F97316', '#F0FDF4;color:#10B981', '#FFF7ED;color:#F59E0B', '#F5F3FF;color:#8B5CF6'];
+
+  tbody.innerHTML = items.map(e => {
+    const badgeClass  = statusMap[e.status] || 'badge-green';
+    const statusText  = (e.status || 'present').replace('_', ' ').toUpperCase();
+    const initials    = (e.name || 'EM').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const colorStyle  = colors[Math.abs(e.id || 0) % colors.length];
+    const bgColor     = colorStyle.split(';')[0];
+    const txtColor    = colorStyle.split('color:')[1] || '#4F46E5';
+
+    return `<tr>
+      <td>
+        <div class="cell-user">
+          <div class="av sm" style="background:${bgColor};color:${txtColor}">${initials}</div>
+          <strong>${e.name}</strong>
+        </div>
+      </td>
+      <td>${e.role || 'Staff'}</td>
+      <td><span class="badge" style="background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border);font-weight:600;">${e.branch_name || 'Main Branch'}</span></td>
+      <td><span class="badge ${badgeClass}">${statusText}</span></td>
+      <td>KES ${Number(e.salary || 0).toLocaleString()}</td>
+      <td>${e.attendance_pct || 0}%</td>
+      <td style="white-space:nowrap;">
+        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openEmployeeModal(${e.id})">Edit</button>
+        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${(e.name || '').replace(/'/g, "\\'")}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterHQHRByBranch(branchId) {
+  const search = (document.getElementById('hq-hr-search')?.value || '').toLowerCase();
+  _hqHRFiltered = _hqHRAllEmployees.filter(e => {
+    const matchBranch = branchId === 'all' || String(e.branch_id) === String(branchId);
+    const matchSearch = !search || (e.name || '').toLowerCase().includes(search) || (e.role || '').toLowerCase().includes(search);
+    return matchBranch && matchSearch;
+  });
+  renderHQHRRows(_hqHRFiltered);
+}
+
+function filterHQHRSearch(q) {
+  const branchId = document.getElementById('hq-hr-branch-filter')?.value || 'all';
+  const search   = (q || '').toLowerCase();
+  _hqHRFiltered  = _hqHRAllEmployees.filter(e => {
+    const matchBranch = branchId === 'all' || String(e.branch_id) === String(branchId);
+    const matchSearch = !search || (e.name || '').toLowerCase().includes(search) || (e.role || '').toLowerCase().includes(search) || (e.branch_name || '').toLowerCase().includes(search);
+    return matchBranch && matchSearch;
+  });
+  renderHQHRRows(_hqHRFiltered);
 }
 
 async function loadInventory() {
@@ -4927,6 +5111,10 @@ async function loadAccounting() {
       setEl('acc-kpi-profit', fmt(d.net_profit));
       setEl('acc-kpi-ar', fmt(d.outstanding_ar));
 
+      if (!state.chartInstances.cashflow || !state.chartInstances.expense) {
+        initAccountingCharts();
+      }
+
       if (state.chartInstances.cashflow) {
         const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const today = new Date();
@@ -5188,6 +5376,10 @@ async function loadHR() {
       setEl('hr-kpi-leave', leaveOrAbsent);
       setEl('hr-kpi-leave-sub', `${d.on_leave || 0} on leave · ${d.absent || 0} absent`);
 
+      if (!state.chartInstances.attend || !state.chartInstances.payroll) {
+        initHRCharts();
+      }
+
       if (state.chartInstances.attend) {
         const history = summaryRes.history || [];
         const labels = [];
@@ -5398,6 +5590,8 @@ async function submitEmployeeModal() {
       showToast(id ? `${name}'s profile updated` : `Employee ${name} added!`);
       closeModal('employee-modal');
       loadHR();
+      // If owner is viewing the HQ HR Management tab, refresh that table too
+      if (state.user?.role === 'owner' && _compArea === 'staffhq') loadHQHR();
     } else {
       showToast(res.error || 'Failed to save employee');
     }
@@ -5417,6 +5611,7 @@ async function terminateEmployee(id, name) {
     if (res.success) {
       showToast(`Employee ${name} terminated`);
       loadHR();
+      if (state.user?.role === 'owner' && _compArea === 'staffhq') loadHQHR();
     } else {
       showToast(res.error || 'Failed to terminate employee');
     }
@@ -5524,6 +5719,10 @@ async function loadProcurement() {
     updatePRKPIs(_prCache);
     renderTopSuppliers(suppliers);
     renderPRRows(_prCache, _prCurrentTab);
+
+    if (!state.chartInstances.procure) {
+      initProcureCharts();
+    }
 
     if (state.chartInstances.procure) {
       const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -5855,6 +6054,40 @@ let _aiHistory = []; // multi-turn conversation history
 
 /** Called by navTo when the user opens the AI view */
 function loadAI() {
+  const isOwner = state.user?.role === 'owner';
+  const bName = state.currentBranch?.name || 'Assigned Branch';
+  const subEl = document.querySelector('#view-ai .view-header p');
+  const suggContainer = document.querySelector('.ai-suggestions');
+  
+  if (subEl) {
+    if (isOwner) {
+      const isHQ = !state.currentBranch || state.currentBranch.id === 'all';
+      subEl.textContent = isHQ 
+        ? 'Enterprise AI Advisor · Consolidated intelligence across all branches & locations'
+        : `Branch & Enterprise AI Advisor · Focused on ${bName} with full enterprise visibility`;
+    } else {
+      subEl.textContent = `Branch AI Advisor · Focused exclusively on ${bName} operations`;
+    }
+  }
+
+  if (suggContainer) {
+    if (isOwner) {
+      suggContainer.innerHTML = `
+        <button class="ai-suggest-btn" onclick="aiAsk('Which branch is performing best this month?')">Which branch is performing best?</button>
+        <button class="ai-suggest-btn" onclick="aiAsk('Compare revenue and stock across all branches')">Compare all branches</button>
+        <button class="ai-suggest-btn" onclick="aiAsk('Which products need restocking across all stores?')">Restock recommendations</button>
+        <button class="ai-suggest-btn" onclick="aiAsk('How can we maximize company-wide net profit?')">Profit optimization tips</button>
+      `;
+    } else {
+      suggContainer.innerHTML = `
+        <button class="ai-suggest-btn" onclick="aiAsk('Which products in this branch need urgent restocking?')">Branch low stock alert</button>
+        <button class="ai-suggest-btn" onclick="aiAsk('What was today\\'s sales breakdown for this branch?')">Branch sales summary</button>
+        <button class="ai-suggest-btn" onclick="aiAsk('How is our branch staff attendance and payroll?')">Staff attendance check</button>
+        <button class="ai-suggest-btn" onclick="aiAsk('Who are the top customers for our branch?')">Top branch customers</button>
+      `;
+    }
+  }
+
   loadAIInsights();
 }
 
@@ -5867,7 +6100,9 @@ async function loadAIInsights() {
   list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:12px 0">Loading live insights...</div>';
 
   try {
-    const res = await fetch('/api/ai/insights', {
+    const bId = state.currentBranch?.id;
+    const bParam = bId ? `?branch_id=${bId}` : '';
+    const res = await fetch(`/api/ai/insights${bParam}`, {
       headers: state.token ? { 'Authorization': 'Bearer ' + state.token } : {}
     });
     const data = await res.json();
@@ -5909,17 +6144,69 @@ function aiAsk(q) {
   sendAIMessage();
 }
 
-/** Convert basic markdown to safe HTML for chat bubbles */
+/** Convert clean AI output to HTML for chat bubbles */
 function aiMarkdownToHtml(text) {
+  if (!text) return '';
+
+  // Escape HTML special chars
+  let t = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const lines = t.split('\n');
+  const outputLines = [];
+  let inNumberedList = false;
+  let inBulletList = false;
+
+  for (let line of lines) {
+    const trimmed = line.trim();
+
+    // Blank line — close any open lists
+    if (!trimmed) {
+      if (inNumberedList) { outputLines.push('</ol>'); inNumberedList = false; }
+      if (inBulletList)   { outputLines.push('</ul>'); inBulletList = false; }
+      outputLines.push('<div style="height:8px"></div>');
+      continue;
+    }
+
+    // Numbered list: "1. Text" or "1. **Bold heading**"
+    const numMatch = trimmed.match(/^(\d+)\.\s+(.+)$/);
+    if (numMatch) {
+      if (inBulletList) { outputLines.push('</ul>'); inBulletList = false; }
+      if (!inNumberedList) { outputLines.push('<ol style="margin:6px 0 6px 16px;padding:0">'); inNumberedList = true; }
+      outputLines.push(`<li>${renderInline(numMatch[2])}</li>`);
+      continue;
+    }
+
+    // Bullet point: "• Text" or "- Text"
+    const bulletMatch = trimmed.match(/^[•\-]\s+(.+)$/);
+    if (bulletMatch) {
+      if (inNumberedList) { outputLines.push('</ol>'); inNumberedList = false; }
+      if (!inBulletList) { outputLines.push('<ul style="margin:6px 0 6px 16px;padding:0;list-style:disc">'); inBulletList = true; }
+      outputLines.push(`<li>${renderInline(bulletMatch[1])}</li>`);
+      continue;
+    }
+
+    // Close any open lists before rendering a plain line
+    if (inNumberedList) { outputLines.push('</ol>'); inNumberedList = false; }
+    if (inBulletList)   { outputLines.push('</ul>'); inBulletList = false; }
+
+    // Plain text line (may contain **bold**, `code`)
+    outputLines.push(`<p style="margin:3px 0">${renderInline(trimmed)}</p>`);
+  }
+
+  if (inNumberedList) outputLines.push('</ol>');
+  if (inBulletList)   outputLines.push('</ul>');
+
+  return outputLines.join('');
+}
+
+/** Render inline markdown: **bold**, `code` */
+function renderInline(text) {
   return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code class="ai-inline-code">$1</code>')
-    .replace(/^[-•] (.+)/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/s, '<ul style="margin:6px 0 6px 16px;padding:0">$1</ul>')
-    .replace(/\n{2,}/g, '</p><p>')
-    .replace(/\n/g, '<br>');
+    .replace(/`(.+?)`/g, '<code class="ai-inline-code">$1</code>');
 }
 
 function addAIMsg(text, sender, isTyping = false) {
@@ -5936,7 +6223,7 @@ function addAIMsg(text, sender, isTyping = false) {
   if (sender === 'bot') {
     div.innerHTML = `<div class="ai-avatar"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 2l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6z" fill="white"/></svg></div><div class="ai-bubble">${bubbleContent}</div>`;
   } else {
-    div.innerHTML = `<div class="ai-bubble">${bubbleContent}</div><div class="ai-avatar" style="background:#10B981">${state.user.avatar}</div>`;
+    div.innerHTML = `<div class="ai-bubble">${bubbleContent}</div><div class="ai-avatar" style="background:#10B981">${state.user?.avatar || 'U'}</div>`;
   }
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
@@ -5966,7 +6253,11 @@ async function sendAIMessage() {
         'Content-Type': 'application/json',
         ...(state.token ? { 'Authorization': 'Bearer ' + state.token } : {})
       },
-      body: JSON.stringify({ message: q, history: _aiHistory })
+      body: JSON.stringify({
+        message: q,
+        history: _aiHistory,
+        branch_id: state.currentBranch?.id
+      })
     });
 
     const data = await res.json();

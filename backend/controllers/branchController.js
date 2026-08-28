@@ -88,7 +88,11 @@ async function deleteBranch(req, res) {
       return res.status(404).json({ error: 'Branch not found.' });
     }
 
-    res.json({ success: true, message: 'Branch deactivated.' });
+    // Also deactivate login credentials and employee records tied to this closed branch
+    exec(db, 'UPDATE users SET is_active = 0 WHERE branch_id = ? AND role != "owner"', [id]);
+    exec(db, 'UPDATE employees SET status = "terminated" WHERE branch_id = ?', [id]);
+
+    res.json({ success: true, message: 'Branch deactivated and associated staff logins disabled.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

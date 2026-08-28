@@ -26,15 +26,24 @@ async function login(req, res) {
     }
 
     const users = query(db,
-      `SELECT u.*, b.name AS branch_name FROM users u
+      `SELECT u.*, b.name AS branch_name, b.is_active AS branch_is_active FROM users u
        LEFT JOIN branches b ON u.branch_id = b.id
        WHERE u.email = ? AND u.is_active = 1`, [email.toLowerCase()]);
 
-    if (!users.length) return res.status(401).json({ error: 'Invalid credentials.' });
+    if (!users.length) return res.status(401).json({ error: 'Invalid credentials or inactive account.' });
 
     const user = users[0];
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials.' });
+
+    // Block non-owner staff from logging into a deleted or deactivated branch
+    if (user.role !== 'owner') {
+      if (user.branch_id && (user.branch_is_active === 0 || user.branch_is_active === null)) {
+        return res.status(403).json({
+          error: 'Your assigned branch location has been closed or deactivated. Please contact the business owner.'
+        });
+      }
+    }
 
     const secret = process.env.JWT_SECRET || 'openfloat_secret';
     const token = jwt.sign(
@@ -60,10 +69,16 @@ async function me(req, res) {
   try {
     const db = await getDb();
     const users = query(db,
-      `SELECT u.id, u.name, u.email, u.role, u.branch_id, u.created_at, b.name AS branch_name
+      `SELECT u.id, u.name, u.email, u.role, u.branch_id, u.is_active, u.created_at,
+              b.name AS branch_name, b.is_active AS branch_is_active
        FROM users u LEFT JOIN branches b ON u.branch_id = b.id
        WHERE u.id = ?`, [req.user.id]);
-    if (!users.length) return res.status(404).json({ error: 'User not found.' });
+    if (!users.length || users[0].is_active === 0) return res.status(401).json({ error: 'User account inactive.' });
+
+    if (users[0].role !== 'owner' && users[0].branch_id && users[0].branch_is_active === 0) {
+      return res.status(403).json({ error: 'Assigned branch is deactivated.' });
+    }
+
     res.json({ success: true, data: users[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
