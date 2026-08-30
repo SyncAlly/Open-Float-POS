@@ -69,6 +69,50 @@ function fillDemoLogin(email, password) {
   document.getElementById('login-error').classList.add('hidden');
 }
 
+function toggleLoginPasswordVisibility() {
+  const pwdInput = document.getElementById('login-password');
+  const eyeClosed = document.getElementById('eye-icon-closed');
+  const eyeOpen = document.getElementById('eye-icon-open');
+
+  if (!pwdInput) return;
+
+  const isPassword = pwdInput.type === 'password';
+  pwdInput.type = isPassword ? 'text' : 'password';
+
+  if (eyeClosed && eyeOpen) {
+    if (isPassword) {
+      // Password is now visible -> display open eye icon
+      eyeClosed.classList.add('hidden');
+      eyeOpen.classList.remove('hidden');
+    } else {
+      // Password is now hidden -> display closed eye icon
+      eyeClosed.classList.remove('hidden');
+      eyeOpen.classList.add('hidden');
+    }
+  }
+}
+
+function toggleEmpPasswordVisibility() {
+  const pwdInput = document.getElementById('emp-login-password');
+  const eyeClosed = document.getElementById('emp-eye-icon-closed');
+  const eyeOpen = document.getElementById('emp-eye-icon-open');
+
+  if (!pwdInput) return;
+
+  const isPassword = pwdInput.type === 'password';
+  pwdInput.type = isPassword ? 'text' : 'password';
+
+  if (eyeClosed && eyeOpen) {
+    if (isPassword) {
+      eyeClosed.classList.add('hidden');
+      eyeOpen.classList.remove('hidden');
+    } else {
+      eyeClosed.classList.remove('hidden');
+      eyeOpen.classList.add('hidden');
+    }
+  }
+}
+
 async function handleLoginSubmit(e) {
   e.preventDefault();
   const emailInput   = document.getElementById('login-email');
@@ -245,7 +289,7 @@ function applyRolePermissions() {
 
   // Role permissions map: view IDs allowed for each role
   const permissions = {
-    owner: isHQMode ? ['dashboard', 'branch-comparison', 'ai', 'settings'] : ['*'],
+    owner: isHQMode ? ['dashboard', 'branch-comparison', 'hr', 'ai', 'settings'] : ['*'],
     manager: ['*'],
     cashier: ['sales', 'crm', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
     hr: ['hr'],
@@ -271,7 +315,13 @@ function applyRolePermissions() {
     }
   });
 
-  // 2. Hide/show sidebar section headers when in HQ mode
+  // 2. Hide/show add branch button in settings
+  const addBranchBtn = document.getElementById('settings-add-branch-btn');
+  if (addBranchBtn) {
+    addBranchBtn.style.display = role === 'owner' ? 'inline-flex' : 'none';
+  }
+
+  // 3. Hide/show sidebar section headers when in HQ mode
   const sectionLabels = document.querySelectorAll('.sidebar-section-label');
   sectionLabels.forEach(lbl => {
     const text = lbl.textContent.trim().toUpperCase();
@@ -1126,6 +1176,54 @@ async function loadCustomers() {
   }
 }
 
+/**
+ * Filter transactions by selected period: 'today' | 'week' | 'month' | 'year'
+ */
+function filterTransactionsByPeriod(txs, period = 'month') {
+  if (!txs || !Array.isArray(txs)) return [];
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const currentDate = now.getDate();
+
+  const parseTxDate = (dateStr) => {
+    if (!dateStr) return null;
+    const str = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T');
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  return txs.filter(t => {
+    if (t.status && t.status !== 'completed') return false;
+    const d = parseTxDate(t.created_at);
+    if (!d) return false;
+
+    if (period === 'today') {
+      return (
+        d.getFullYear() === currentYear &&
+        d.getMonth() === currentMonth &&
+        d.getDate() === currentDate
+      );
+    }
+
+    if (period === 'week') {
+      const sevenDaysAgo = new Date(currentYear, currentMonth, currentDate - 6, 0, 0, 0);
+      return d >= sevenDaysAgo;
+    }
+
+    if (period === 'month') {
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+    }
+
+    if (period === 'year') {
+      return d.getFullYear() === currentYear;
+    }
+
+    return true;
+  });
+}
+
 async function loadDashboardKPIs() {
   try {
     const isEnterprise = state.currentBranch && (state.currentBranch.id === 'all' || state.currentBranch.id === 0);
@@ -1167,7 +1265,6 @@ async function loadDashboardKPIs() {
     const hrRes        = results[3];
     const prRes        = results[4];
     const branchesRes  = results[5];
-    const branchPerfRes = isEnterprise ? results[6] : null;
 
     const overview  = overviewRes.status  === 'fulfilled' ? (overviewRes.value.data  || {}) : {};
     let products    = inventoryRes.status === 'fulfilled' ? (inventoryRes.value.data || []) : [];
@@ -1183,26 +1280,53 @@ async function loadDashboardKPIs() {
       employees = employees.filter(e => e.branch_id == branchId);
     }
 
-    state.dashboardTxs = txs; // Cache transactions for period chart updating
+    state.dashboardTxs = txs; // Cache transactions
     state.branchesCache = branches;
+
+    // Read active period filter ('today' | 'week' | 'month' | 'year')
+    const selectedPeriod = document.getElementById('period-select')?.value || 'month';
+    const periodLabelMap = {
+      today: "Today's",
+      week: "This Week's",
+      month: "This Month's",
+      year: "This Year's"
+    };
+    const periodLabel = periodLabelMap[selectedPeriod] || "This Month's";
+
+    // Filter transactions specifically for the active period
+    const periodTxs = filterTransactionsByPeriod(txs, selectedPeriod);
 
     const setKPI = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
-    // 1. KPI Cards
-    const totalRev = overview.total_revenue !== undefined ? overview.total_revenue : txs.reduce((sum, t) => sum + (t.total || 0), 0);
-    const netProfit = overview.net_profit !== undefined ? overview.net_profit : (totalRev * 0.3);
-    const totalTxCount = txs.length;
+    // 1. KPI Cards (Scoped strictly to selected period)
+    const periodRev = periodTxs.reduce((sum, t) => sum + (t.total || 0), 0);
+    const periodNetProfit = periodRev * 0.3; // 30% estimated margin
+    const periodTxCount = periodTxs.length;
     const arBalance = overview.outstanding_ar || 0;
 
-    setKPI('kpi-revenue', getCurrency() + ' ' + fmt(Math.round(totalRev)));
-    setKPI('kpi-profit', getCurrency() + ' ' + fmt(Math.round(netProfit)));
-    setKPI('kpi-transactions', fmt(totalTxCount));
+    // Update label on Revenue card
+    const revCardLabel = document.querySelector('#kpi-card-rev .kpi-label');
+    if (revCardLabel) revCardLabel.textContent = `${periodLabel} Revenue`;
+
+    const revTrend = document.getElementById('kpi-revenue-trend');
+    if (revTrend) {
+      revTrend.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 9L6 4l4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> ${periodTxCount} order${periodTxCount === 1 ? '' : 's'} in ${selectedPeriod}`;
+    }
+
+    const txTrend = document.getElementById('kpi-txn-trend');
+    if (txTrend) {
+      txTrend.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 9L6 4l4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> ${periodTxCount > 0 ? 'Completed orders' : 'No sales recorded'}`;
+    }
+
+    setKPI('kpi-revenue', getCurrency() + ' ' + fmt(Math.round(periodRev)));
+    setKPI('kpi-profit', getCurrency() + ' ' + fmt(Math.round(periodNetProfit)));
+    setKPI('kpi-transactions', fmt(periodTxCount));
     setKPI('kpi-outstanding-ar', getCurrency() + ' ' + fmt(Math.round(arBalance)));
 
-    // 2. Metric Chips
-    const cashTotal = txs.filter(t => t.payment_method === 'cash').reduce((sum, t) => sum + (t.total || 0), 0);
-    const bankTotal = txs.filter(t => t.payment_method === 'card' || t.payment_method === 'bank').reduce((sum, t) => sum + (t.total || 0), 0);
-    const mpesaTotal = txs.filter(t => t.payment_method === 'mpesa').reduce((sum, t) => sum + (t.total || 0), 0);
+    // 2. Metric Chips (Cash / Card / M-Pesa scoped to selected period)
+    const cashTotal = periodTxs.filter(t => t.payment_method === 'cash').reduce((sum, t) => sum + (t.total || 0), 0);
+    const bankTotal = periodTxs.filter(t => t.payment_method === 'card' || t.payment_method === 'bank').reduce((sum, t) => sum + (t.total || 0), 0);
+    const mpesaTotal = periodTxs.filter(t => t.payment_method === 'mpesa').reduce((sum, t) => sum + (t.total || 0), 0);
     const invValue = overview.inventory_cogs_value || products.reduce((sum, p) => sum + ((p.stock_qty || p.stock || 0) * (p.buy_price || p.price || 0)), 0);
     const presentStaff = employees.filter(e => e.status === 'present').length;
     const totalStaff = employees.length || 0;
@@ -1217,9 +1341,9 @@ async function loadDashboardKPIs() {
     setKPI('chip-branches', isEnterprise ? `${activeBranchesCount} / ${totalBranchesCount}` : '1 / 1 (Selected)');
     setKPI('chip-staff', `${presentStaff} / ${totalStaff}`);
 
-    // 3. Payment Donut Chart & Legend
+    // 3. Payment Donut Chart & Legend (Scoped to selected period)
     const pCounts = { cash: 0, mpesa: 0, card: 0, credit: 0 };
-    txs.forEach(t => {
+    periodTxs.forEach(t => {
       const pm = (t.payment_method || 'cash').toLowerCase();
       if (pm in pCounts) pCounts[pm] += (t.total || 1);
     });
@@ -1242,14 +1366,82 @@ async function loadDashboardKPIs() {
       state.chartInstances.payment.update();
     }
 
-    // 4. Revenue & Profit Line Chart
+    // 4. Revenue & Profit Line Chart (Bucketized accurately by selected period)
     if (!state.chartInstances.revenue) initRevenueChart();
     if (state.chartInstances.revenue) {
-      const revData = totalRev > 0
-        ? [Math.round(totalRev * 0.7), Math.round(totalRev * 0.75), Math.round(totalRev * 0.85), Math.round(totalRev * 0.8), Math.round(totalRev * 0.95), Math.round(totalRev)]
-        : [0, 0, 0, 0, 0, 0];
-      const profData = revData.map(v => Math.round(v * 0.25));
+      let labels = [];
+      let revData = [];
+      let profData = [];
 
+      const parseDate = (dStr) => {
+        if (!dStr) return null;
+        const s = dStr.includes('T') ? dStr : dStr.replace(' ', 'T');
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+      };
+
+      if (selectedPeriod === 'today') {
+        labels = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+        revData = Array(7).fill(0);
+        profData = Array(7).fill(0);
+        periodTxs.forEach(t => {
+          const d = parseDate(t.created_at);
+          if (!d) return;
+          const h = d.getHours();
+          let bucket = 0;
+          if (h < 9) bucket = 0;
+          else if (h < 11) bucket = 1;
+          else if (h < 13) bucket = 2;
+          else if (h < 15) bucket = 3;
+          else if (h < 17) bucket = 4;
+          else if (h < 19) bucket = 5;
+          else bucket = 6;
+          revData[bucket] += (t.total || 0);
+          profData[bucket] += (t.total || 0) * 0.3;
+        });
+      } else if (selectedPeriod === 'week') {
+        labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        revData = Array(7).fill(0);
+        profData = Array(7).fill(0);
+        periodTxs.forEach(t => {
+          const d = parseDate(t.created_at);
+          if (!d) return;
+          const day = d.getDay();
+          const bucket = day === 0 ? 6 : day - 1;
+          revData[bucket] += (t.total || 0);
+          profData[bucket] += (t.total || 0) * 0.3;
+        });
+      } else if (selectedPeriod === 'year') {
+        labels = ['Q1', 'Q2', 'Q3', 'Q4'];
+        revData = Array(4).fill(0);
+        profData = Array(4).fill(0);
+        periodTxs.forEach(t => {
+          const d = parseDate(t.created_at);
+          if (!d) return;
+          const bucket = Math.min(Math.floor(d.getMonth() / 3), 3);
+          revData[bucket] += (t.total || 0);
+          profData[bucket] += (t.total || 0) * 0.3;
+        });
+      } else {
+        // Month (4 weeks)
+        labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+        revData = Array(4).fill(0);
+        profData = Array(4).fill(0);
+        periodTxs.forEach(t => {
+          const d = parseDate(t.created_at);
+          if (!d) return;
+          const dayOfMonth = d.getDate();
+          let bucket = 0;
+          if (dayOfMonth <= 7) bucket = 0;
+          else if (dayOfMonth <= 14) bucket = 1;
+          else if (dayOfMonth <= 21) bucket = 2;
+          else bucket = 3;
+          revData[bucket] += (t.total || 0);
+          profData[bucket] += (t.total || 0) * 0.3;
+        });
+      }
+
+      state.chartInstances.revenue.data.labels = labels;
       state.chartInstances.revenue.data.datasets[0].data = revData;
       state.chartInstances.revenue.data.datasets[1].data = profData;
       state.chartInstances.revenue.update();
@@ -1260,12 +1452,11 @@ async function loadDashboardKPIs() {
     let revSpark = Array(numPoints).fill(0);
     let profSpark = Array(numPoints).fill(0);
     let txnSpark = Array(numPoints).fill(0);
-    let debtSpark = Array(numPoints).fill(0);
+    let debtSpark = Array(numPoints).fill(arBalance);
 
-    if (txs.length > 0) {
-      const sortedTxs = [...txs].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      const chunkSize = sortedTxs.length / numPoints;
-      const creditSalesBuckets = Array(numPoints).fill(0);
+    if (periodTxs.length > 0) {
+      const sortedTxs = [...periodTxs].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const chunkSize = Math.max(1, sortedTxs.length / numPoints);
 
       for (let i = 0; i < sortedTxs.length; i++) {
         const bucketIndex = Math.min(Math.floor(i / chunkSize), numPoints - 1);
@@ -1273,17 +1464,7 @@ async function loadDashboardKPIs() {
         revSpark[bucketIndex] += t.total || 0;
         profSpark[bucketIndex] += (t.total || 0) * 0.3;
         txnSpark[bucketIndex] += 1;
-        if (t.payment_method === 'credit') {
-          creditSalesBuckets[bucketIndex] += t.total || 0;
-        }
       }
-
-      debtSpark[numPoints - 1] = arBalance;
-      for (let i = numPoints - 2; i >= 0; i--) {
-        debtSpark[i] = Math.max(0, debtSpark[i + 1] - creditSalesBuckets[i + 1]);
-      }
-    } else {
-      debtSpark = Array(numPoints).fill(arBalance);
     }
 
     drawSparkline('spark-revenue', revSpark, '#F97316');
@@ -1316,12 +1497,12 @@ async function loadDashboardKPIs() {
       }
     }
 
-    // 6. Branch Performance Summary Card Widget
+    // 6. Branch Performance Summary Card Widget (Filtered to period revenue)
     const branchListEl = document.getElementById('dash-branch-list');
     if (branchListEl) {
       const displayBranches = isEnterprise ? branches : branches.filter(b => b.id == branchId);
       const salesByBranchId = {};
-      txs.forEach(t => {
+      periodTxs.forEach(t => {
         if (t.branch_id) {
           salesByBranchId[t.branch_id] = (salesByBranchId[t.branch_id] || 0) + (t.total || 0);
         }
@@ -1330,12 +1511,12 @@ async function loadDashboardKPIs() {
       let branchList = displayBranches.map(b => ({
         id: b.id,
         name: b.name || 'Branch ' + b.id,
-        revenue: isEnterprise ? (salesByBranchId[b.id] || 0) : totalRev,
+        revenue: isEnterprise ? (salesByBranchId[b.id] || 0) : periodRev,
         status: b.is_active !== 0 ? 'Active' : 'Inactive'
       }));
 
       if (branchList.length === 0) {
-        branchList = [{ id: branchId || 1, name: state.currentBranch?.name || 'Main Branch', revenue: totalRev, status: 'Active' }];
+        branchList = [{ id: branchId || 1, name: state.currentBranch?.name || 'Main Branch', revenue: periodRev, status: 'Active' }];
       }
 
       branchList.sort((a, b) => b.revenue - a.revenue);
@@ -1343,7 +1524,7 @@ async function loadDashboardKPIs() {
       const maxRev = branchList[0]?.revenue || 1;
 
       branchListEl.innerHTML = branchList.map((b, i) => {
-        const pct = maxRev > 0 ? Math.round((b.revenue / maxRev) * 100) : 0;
+        const pct = (maxRev > 0 && b.revenue > 0) ? Math.round((b.revenue / maxRev) * 100) : 0;
         const statusBadge = b.status === 'Inactive'
           ? '<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:var(--red-light);color:var(--red);margin-left:6px;font-weight:600;">Inactive</span>'
           : '';
@@ -1363,12 +1544,12 @@ async function loadDashboardKPIs() {
       }).join('');
     }
 
-    // 7. Recent Transactions List
+    // 7. Recent Transactions List (Filtered to active period)
     const txnListEl = document.getElementById('dash-txn-list');
     if (txnListEl) {
-      const recentTxs = txs.slice(0, 4);
+      const recentTxs = periodTxs.slice(0, 4);
       if (recentTxs.length === 0) {
-        txnListEl.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">No recent transactions recorded.</div>';
+        txnListEl.innerHTML = `<div style="padding:16px;color:var(--text-muted);font-size:12px;text-align:center">No transactions recorded for ${periodLabel.toLowerCase().replace("'s", '')}.</div>`;
       } else {
         const bgColors = ['#EEF2FF', '#F0FDF4', '#FFF7ED', '#FDF2F8'];
         const textColors = ['#F97316', '#10B981', '#F59E0B', '#EC4899'];
@@ -1431,7 +1612,44 @@ async function loadDashboardKPIs() {
 let _compArea = 'sales'; // 'sales' | 'hr' | 'inventory' | 'channels'
 let _compMetric = 'm1'; // 'm1' | 'm2' | 'm3'
 let _compChartType = 'bar'; // 'bar' | 'line'
+let _compPeriod = 'all'; // 'today' | 'week' | 'month' | 'year' | 'all'
 let _compDataCache = [];
+
+function getBranchMetricByPeriod(branch, metricKey, period = 'all') {
+  if (metricKey === 'revenue') {
+    if (period === 'today') return branch.today_revenue || 0;
+    if (period === 'week') return branch.week_revenue || 0;
+    if (period === 'month') return branch.month_revenue || 0;
+    if (period === 'year') return branch.year_revenue || 0;
+    return branch.total_revenue || 0;
+  }
+  if (metricKey === 'orders') {
+    if (period === 'today') return branch.today_orders || 0;
+    if (period === 'week') return branch.week_orders || 0;
+    if (period === 'month') return branch.month_orders || 0;
+    if (period === 'year') return branch.year_orders || 0;
+    return branch.transaction_count || 0;
+  }
+  if (metricKey === 'avg_order') {
+    const rev = getBranchMetricByPeriod(branch, 'revenue', period);
+    const ord = getBranchMetricByPeriod(branch, 'orders', period);
+    return ord > 0 ? (rev / ord) : 0;
+  }
+  return 0;
+}
+
+function updateCompPeriod(period) {
+  _compPeriod = period || 'all';
+  loadBranchComparisonView();
+  const periodMap = {
+    today: "Today",
+    week: "This Week",
+    month: "This Month",
+    year: "This Year",
+    all: "All Time"
+  };
+  showToast(`Comparison timeframe set to: ${periodMap[_compPeriod] || _compPeriod}`);
+}
 
 async function loadBranchComparisonView() {
   if (state.user?.role !== 'owner') {
@@ -1441,18 +1659,33 @@ async function loadBranchComparisonView() {
   }
 
   try {
+    const periodSelect = document.getElementById('comp-period-select');
+    if (periodSelect && periodSelect.value !== _compPeriod) {
+      periodSelect.value = _compPeriod;
+    }
+    const period = _compPeriod || 'all';
+
     const res = await apiGet('/api/branches/performance');
     _compDataCache = (res && res.success) ? (res.data || []) : [];
-    
+
+    const periodMap = {
+      today: "Today's",
+      week: "This Week's",
+      month: "This Month's",
+      year: "This Year's",
+      all: "All-Time"
+    };
+    const periodLabel = periodMap[period] || "All-Time";
+
     // 1. Update 4 Summary KPI Cards
-    const totalRev = _compDataCache.reduce((s, b) => s + (b.total_revenue || 0), 0);
+    const totalRev = _compDataCache.reduce((s, b) => s + getBranchMetricByPeriod(b, 'revenue', period), 0);
     const totalStaff = _compDataCache.reduce((s, b) => s + (b.staff_count || 0), 0);
     const totalInv = _compDataCache.reduce((s, b) => s + (b.inventory_value || 0), 0);
     const totalLowStock = _compDataCache.reduce((s, b) => s + (b.low_stock_count || 0), 0);
-    
-    const sortedByRev = [..._compDataCache].sort((a, b) => (b.total_revenue || 0) - (a.total_revenue || 0));
+
+    const sortedByRev = [..._compDataCache].sort((a, b) => getBranchMetricByPeriod(b, 'revenue', period) - getBranchMetricByPeriod(a, 'revenue', period));
     const topBranch = sortedByRev[0]?.name || '—';
-    const topBranchRev = sortedByRev[0]?.total_revenue || 0;
+    const topBranchRev = getBranchMetricByPeriod(sortedByRev[0] || {}, 'revenue', period);
     const topBranchShare = totalRev > 0 ? Math.round((topBranchRev / totalRev) * 100) : 0;
 
     const avgAttendance = _compDataCache.length > 0
@@ -1460,14 +1693,17 @@ async function loadBranchComparisonView() {
       : 0;
 
     const setEl = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    setEl('comp-kpi-rev-label', `${periodLabel} Enterprise Revenue`);
     setEl('comp-total-rev', getCurrency() + ' ' + fmt(Math.round(totalRev)));
+    setEl('comp-rev-trend', `Live in ${periodLabel.toLowerCase()} across all branches`);
     setEl('comp-top-branch', topBranch);
-    setEl('comp-top-branch-rev', `${topBranchShare}% of enterprise revenue`);
+    setEl('comp-top-branch-rev', `${topBranchShare}% of ${periodLabel.toLowerCase()} revenue`);
     setEl('comp-total-staff', fmt(totalStaff) + ' Employees');
     setEl('comp-avg-attendance', `Avg attendance: ${avgAttendance}%`);
     setEl('comp-total-inv', getCurrency() + ' ' + fmt(Math.round(totalInv)));
     setEl('comp-total-low-stock', `${totalLowStock} items low in stock`);
     setEl('comp-branch-count-badge', `${_compDataCache.length} Active Locations`);
+    setEl('comp-th-period', periodLabel);
 
     // 2. Render Charts & Table
     updateBranchComparisonPageCharts();
@@ -1483,33 +1719,11 @@ function switchComparisonArea(area) {
   _compArea = area;
   _compMetric = 'm1'; // reset to first metric
 
-  // Update tabs (include staffhq)
-  ['sales', 'hr', 'inventory', 'channels', 'staffhq'].forEach(a => {
+  // Update tabs
+  ['sales', 'hr', 'inventory', 'channels'].forEach(a => {
     const tab = document.getElementById(`tab-comp-${a}`);
     if (tab) tab.classList.toggle('active', a === area);
   });
-
-  // Toggle chart panel and HR section visibility
-  const chartPanel   = document.querySelector('#view-branch-comparison .panel-card:has(canvas)') ||
-                       document.getElementById('compPageMainChart')?.closest('.panel-card');
-  const matrixPanel  = document.getElementById('comp-matrix-tbody')?.closest('.panel-card');
-  const hrSection    = document.getElementById('comp-area-staffhq');
-  const metricPills  = document.getElementById('comp-metric-pills');
-
-  const isHR = (area === 'staffhq');
-
-  // Show/hide chart area panels
-  if (chartPanel)  chartPanel.style.display  = isHR ? 'none' : '';
-  if (matrixPanel) matrixPanel.style.display = isHR ? 'none' : '';
-  if (metricPills) metricPills.style.display = isHR ? 'none' : '';
-
-  // Show/hide enterprise HR section
-  if (hrSection) hrSection.style.display = isHR ? '' : 'none';
-
-  if (isHR) {
-    loadHQHR();
-    return;
-  }
 
   // Update pill buttons labels for chart-based areas
   const pill1 = document.getElementById('btn-comp-m1');
@@ -1521,7 +1735,7 @@ function switchComparisonArea(area) {
 
   if (area === 'sales') {
     if (title) title.textContent = 'Cross-Branch Sales & Revenue Comparison';
-    if (sub) sub.textContent = 'Comparing total revenue, order count, and average order value across stores';
+    if (sub) sub.textContent = 'Comparing revenue, order volume, and average order value across stores';
     if (donutTitle) donutTitle.textContent = 'Revenue Share';
     if (pill1) pill1.textContent = 'Revenue';
     if (pill2) pill2.textContent = 'Orders';
@@ -1572,6 +1786,7 @@ function updateBranchComparisonPageCharts() {
 
   const labels = _compDataCache.map(b => b.name);
   const cur = getCurrency();
+  const period = _compPeriod || 'all';
   let datasetLabel = '';
   let dataValues = [];
   let isCurrency = false;
@@ -1582,15 +1797,15 @@ function updateBranchComparisonPageCharts() {
 
   if (_compArea === 'sales') {
     if (_compMetric === 'm1') {
-      datasetLabel = `Total Revenue (${cur})`;
-      dataValues = _compDataCache.map(b => Math.round(b.total_revenue || 0));
+      datasetLabel = `Revenue (${cur})`;
+      dataValues = _compDataCache.map(b => Math.round(getBranchMetricByPeriod(b, 'revenue', period)));
       isCurrency = true;
     } else if (_compMetric === 'm2') {
-      datasetLabel = 'Total Completed Orders';
-      dataValues = _compDataCache.map(b => b.transaction_count || 0);
+      datasetLabel = 'Completed Orders';
+      dataValues = _compDataCache.map(b => getBranchMetricByPeriod(b, 'orders', period));
     } else {
       datasetLabel = `Average Order Value (${cur})`;
-      dataValues = _compDataCache.map(b => Math.round(b.avg_order_value || 0));
+      dataValues = _compDataCache.map(b => Math.round(getBranchMetricByPeriod(b, 'avg_order', period)));
       isCurrency = true;
     }
   } else if (_compArea === 'hr') {
@@ -1739,12 +1954,13 @@ function renderBranchComparisonMatrixTable() {
     return;
   }
 
-  const sorted = [..._compDataCache].sort((a, b) => (b.total_revenue || 0) - (a.total_revenue || 0));
+  const period = _compPeriod || 'all';
+  const sorted = [..._compDataCache].sort((a, b) => getBranchMetricByPeriod(b, 'revenue', period) - getBranchMetricByPeriod(a, 'revenue', period));
 
   tbody.innerHTML = sorted.map((b, idx) => {
-    const rev = b.total_revenue || 0;
-    const tx = b.transaction_count || 0;
-    const avg = b.avg_order_value || 0;
+    const rev = getBranchMetricByPeriod(b, 'revenue', period);
+    const tx = getBranchMetricByPeriod(b, 'orders', period);
+    const avg = getBranchMetricByPeriod(b, 'avg_order', period);
     const staff = b.staff_count || 0;
     const att = Math.round(b.avg_attendance_pct || 0);
     const inv = b.inventory_value || 0;
@@ -1768,127 +1984,6 @@ function renderBranchComparisonMatrixTable() {
       </tr>
     `;
   }).join('');
-}
-
-/* ── ENTERPRISE HR MANAGEMENT (HQ — Owner Only) ─────────────────────────── */
-let _hqHRAllEmployees = []; // full enterprise employee list
-let _hqHRFiltered = [];     // currently filtered/searched subset
-
-async function loadHQHR() {
-  // Only owner should access this — branch-comparison view already guards this
-  if (state.user?.role !== 'owner') return;
-
-  const tbody = document.getElementById('hq-hr-tbody');
-  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  const fmtKES = n => getCurrency() + ' ' + fmt(Math.round(n || 0));
-
-  if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;"><span class="spinner-sm"></span> Loading...</td></tr>';
-
-  try {
-    const [empRes, summaryRes] = await Promise.all([
-      apiGet('/api/hr/employees'),           // no branch_id = all employees enterprise-wide
-      apiGet('/api/hr/payroll/summary')      // no branch_id = enterprise totals
-    ]);
-
-    _hqHRAllEmployees = (empRes?.data || []);
-    _hqHRFiltered = [..._hqHRAllEmployees];
-
-    // Populate branch filter dropdown
-    const branchFilter = document.getElementById('hq-hr-branch-filter');
-    if (branchFilter) {
-      const branches = [...new Map(_hqHRAllEmployees.map(e => [e.branch_id, { id: e.branch_id, name: e.branch_name }])).values()]
-        .filter(b => b.id);
-      branchFilter.innerHTML = '<option value="all">All Branches</option>' +
-        branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
-    }
-
-    // KPI cards
-    const d = summaryRes?.data || {};
-    const totalEmp = _hqHRAllEmployees.length;
-    const payroll  = _hqHRAllEmployees.reduce((s, e) => s + (e.salary || 0), 0);
-    const avgAtt   = totalEmp > 0
-      ? Math.round(_hqHRAllEmployees.reduce((s, e) => s + (e.attendance_pct || 0), 0) / totalEmp)
-      : 0;
-    const absent   = _hqHRAllEmployees.filter(e => e.status === 'absent').length;
-    const onLeave  = _hqHRAllEmployees.filter(e => e.status === 'on_leave').length;
-
-    setEl('hq-hr-kpi-total',      totalEmp);
-    setEl('hq-hr-kpi-payroll',    fmtKES(payroll));
-    setEl('hq-hr-kpi-attendance', avgAtt + '%');
-    setEl('hq-hr-kpi-present',    `${d.present_today || 0} present today`);
-    setEl('hq-hr-kpi-leave',      absent + onLeave);
-    setEl('hq-hr-kpi-leave-sub',  `${onLeave} on leave · ${absent} absent`);
-
-    // Also sync _hrEmployeesCache so Edit modal can find employees
-    _hrEmployeesCache = _hqHRAllEmployees;
-
-    renderHQHRRows(_hqHRFiltered);
-
-  } catch (err) {
-    console.error('[loadHQHR] Error:', err);
-    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--red);">Failed to load enterprise HR data.</td></tr>';
-  }
-}
-
-function renderHQHRRows(items) {
-  const tbody = document.getElementById('hq-hr-tbody');
-  if (!tbody) return;
-
-  if (!items || !items.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No employees found matching this filter.</td></tr>';
-    return;
-  }
-
-  const statusMap = { present: 'badge-green', on_leave: 'badge-amber', absent: 'badge-red', terminated: 'badge-red' };
-  const colors    = ['#FFF7ED;color:#F97316', '#F0FDF4;color:#10B981', '#FFF7ED;color:#F59E0B', '#F5F3FF;color:#8B5CF6'];
-
-  tbody.innerHTML = items.map(e => {
-    const badgeClass  = statusMap[e.status] || 'badge-green';
-    const statusText  = (e.status || 'present').replace('_', ' ').toUpperCase();
-    const initials    = (e.name || 'EM').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-    const colorStyle  = colors[Math.abs(e.id || 0) % colors.length];
-    const bgColor     = colorStyle.split(';')[0];
-    const txtColor    = colorStyle.split('color:')[1] || '#4F46E5';
-
-    return `<tr>
-      <td>
-        <div class="cell-user">
-          <div class="av sm" style="background:${bgColor};color:${txtColor}">${initials}</div>
-          <strong>${e.name}</strong>
-        </div>
-      </td>
-      <td>${e.role || 'Staff'}</td>
-      <td><span class="badge" style="background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border);font-weight:600;">${e.branch_name || 'Main Branch'}</span></td>
-      <td><span class="badge ${badgeClass}">${statusText}</span></td>
-      <td>KES ${Number(e.salary || 0).toLocaleString()}</td>
-      <td>${e.attendance_pct || 0}%</td>
-      <td style="white-space:nowrap;">
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openEmployeeModal(${e.id})">Edit</button>
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${(e.name || '').replace(/'/g, "\\'")}')">Delete</button>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function filterHQHRByBranch(branchId) {
-  const search = (document.getElementById('hq-hr-search')?.value || '').toLowerCase();
-  _hqHRFiltered = _hqHRAllEmployees.filter(e => {
-    const matchBranch = branchId === 'all' || String(e.branch_id) === String(branchId);
-    const matchSearch = !search || (e.name || '').toLowerCase().includes(search) || (e.role || '').toLowerCase().includes(search);
-    return matchBranch && matchSearch;
-  });
-  renderHQHRRows(_hqHRFiltered);
-}
-
-function filterHQHRSearch(q) {
-  const branchId = document.getElementById('hq-hr-branch-filter')?.value || 'all';
-  const search   = (q || '').toLowerCase();
-  _hqHRFiltered  = _hqHRAllEmployees.filter(e => {
-    const matchBranch = branchId === 'all' || String(e.branch_id) === String(branchId);
-    const matchSearch = !search || (e.name || '').toLowerCase().includes(search) || (e.role || '').toLowerCase().includes(search) || (e.branch_name || '').toLowerCase().includes(search);
-    return matchBranch && matchSearch;
-  });
-  renderHQHRRows(_hqHRFiltered);
 }
 
 async function loadInventory() {
@@ -4745,113 +4840,6 @@ async function updateDashboard() {
   };
 
   await loadDashboardKPIs();
-
-  // Dynamic Chart & KPI scaling based on selected period
-  if (state.chartInstances.revenue) {
-    let labels = [];
-    let revData = [];
-    let profitData = [];
-    let formatUnit = v => 'KES ' + Math.round(v/1000) + 'k';
-    
-    const txs = state.dashboardTxs || [];
-    
-    if (period === 'today') {
-      labels = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
-      revData = Array(7).fill(0);
-      profitData = Array(7).fill(0);
-      
-      const todayStr = new Date().toISOString().slice(0, 10);
-      txs.forEach(t => {
-        if (t.created_at && t.created_at.startsWith(todayStr) && t.status === 'completed') {
-          const date = new Date(t.created_at.replace(' ', 'T'));
-          const hour = date.getHours();
-          let bucket = 0;
-          if (hour < 9) bucket = 0;
-          else if (hour < 11) bucket = 1;
-          else if (hour < 13) bucket = 2;
-          else if (hour < 15) bucket = 3;
-          else if (hour < 17) bucket = 4;
-          else if (hour < 19) bucket = 5;
-          else bucket = 6;
-          
-          revData[bucket] += t.total || 0;
-          profitData[bucket] += (t.total || 0) * 0.3; // 30% estimated margin
-        }
-      });
-      formatUnit = v => 'KES ' + Math.round(v);
-    } else if (period === 'week') {
-      labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      revData = Array(7).fill(0);
-      profitData = Array(7).fill(0);
-      
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      
-      txs.forEach(t => {
-        if (t.created_at && t.status === 'completed') {
-          const date = new Date(t.created_at.replace(' ', 'T'));
-          if (date >= oneWeekAgo) {
-            const day = date.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
-            const bucket = day === 0 ? 6 : day - 1; // Mon=0, ..., Sun=6
-            revData[bucket] += t.total || 0;
-            profitData[bucket] += (t.total || 0) * 0.3;
-          }
-        }
-      });
-    } else if (period === 'year') {
-      labels = ['Q1', 'Q2', 'Q3', 'Q4'];
-      revData = Array(4).fill(0);
-      profitData = Array(4).fill(0);
-      
-      const currentYear = new Date().getFullYear();
-      txs.forEach(t => {
-        if (t.created_at && t.status === 'completed') {
-          const date = new Date(t.created_at.replace(' ', 'T'));
-          if (date.getFullYear() === currentYear) {
-            const bucket = Math.floor(date.getMonth() / 3);
-            revData[bucket] += t.total || 0;
-            profitData[bucket] += (t.total || 0) * 0.3;
-          }
-        }
-      });
-      formatUnit = v => 'KES ' + (v/1000000).toFixed(1) + 'M';
-    } else {
-      // Month (default - showing weeks)
-      labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-      revData = Array(4).fill(0);
-      profitData = Array(4).fill(0);
-      
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      
-      txs.forEach(t => {
-        if (t.created_at && t.status === 'completed') {
-          const date = new Date(t.created_at.replace(' ', 'T'));
-          if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) {
-            const dayOfMonth = date.getDate();
-            let bucket = 0;
-            if (dayOfMonth <= 7) bucket = 0;
-            else if (dayOfMonth <= 14) bucket = 1;
-            else if (dayOfMonth <= 21) bucket = 2;
-            else bucket = 3;
-            
-            revData[bucket] += t.total || 0;
-            profitData[bucket] += (t.total || 0) * 0.3;
-          }
-        }
-      });
-      formatUnit = v => 'KES ' + (v >= 1000 ? Math.round(v/1000) + 'k' : Math.round(v));
-    }
-
-    state.chartInstances.revenue.data.labels = labels;
-    state.chartInstances.revenue.data.datasets[0].data = revData;
-    state.chartInstances.revenue.data.datasets[1].data = profitData;
-    if (state.chartInstances.revenue.options.scales?.y?.ticks) {
-      state.chartInstances.revenue.options.scales.y.ticks.callback = formatUnit;
-    }
-    state.chartInstances.revenue.update();
-  }
-
   showToast(`Dashboard period set to: ${periodMap[period] || period}`);
 }
 
@@ -5354,8 +5342,28 @@ let _hrEmployeesCache = [];
 
 async function loadHR() {
   try {
-    const bId = state.currentBranch?.id;
-    const bParam = bId && bId !== 'all' ? `?branch_id=${bId}` : '';
+    const isEnterprise = state.user?.role === 'owner' && (!state.currentBranch || state.currentBranch.id === 'all');
+    const bId = (!isEnterprise && state.currentBranch?.id) ? state.currentBranch.id : null;
+    const bParam = bId ? `?branch_id=${bId}` : '';
+
+    const branchFilterEl = document.getElementById('hr-branch-filter');
+    const dirTitle = document.getElementById('hr-directory-title');
+    if (dirTitle) {
+      dirTitle.textContent = isEnterprise ? 'Enterprise Employee Directory' : 'Employee Directory';
+    }
+
+    if (branchFilterEl) {
+      if (isEnterprise) {
+        branchFilterEl.style.display = 'inline-block';
+        const currentVal = branchFilterEl.value || 'all';
+        const branches = state.branchesCache || [];
+        branchFilterEl.innerHTML = '<option value="all">All Branches</option>' +
+          branches.map(b => `<option value="${b.id}" ${String(b.id) === String(currentVal) ? 'selected' : ''}>${b.name}</option>`).join('');
+      } else {
+        branchFilterEl.style.display = 'none';
+      }
+    }
+
     const [summaryRes, empRes] = await Promise.all([
       apiGet(`/api/hr/payroll/summary${bParam}`),
       apiGet(`/api/hr/employees${bParam}`)
@@ -5368,6 +5376,7 @@ async function loadHR() {
       const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
       setEl('hr-kpi-total', d.total_employees || 0);
+      setEl('hr-kpi-branches', isEnterprise ? 'Across all active branches' : (state.currentBranch?.name || 'This branch'));
       setEl('hr-kpi-present', d.present_today || 0);
       setEl('hr-kpi-rate', `${d.avg_attendance || 0}% attendance rate`);
       setEl('hr-kpi-payroll', fmtKES(d.total_payroll || 0));
@@ -5412,7 +5421,8 @@ async function loadHR() {
 
     // Render Employee Directory
     _hrEmployeesCache = (empRes && empRes.data) || [];
-    renderEmployeeRows(_hrEmployeesCache);
+    const activeBranchFilter = branchFilterEl?.value || 'all';
+    filterHRByBranch(activeBranchFilter);
 
   } catch (e) {
     console.error('[loadHR] error:', e);
@@ -5444,7 +5454,7 @@ function renderEmployeeRows(items) {
         </div>
       </td>
       <td>${e.role || 'Staff'}</td>
-      <td>${e.branch_name || 'Nairobi Main'}</td>
+      <td><span class="badge" style="background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border);font-weight:600;">${e.branch_name || 'Main Branch'}</span></td>
       <td><span class="badge ${badgeClass}">${statusText}</span></td>
       <td>KES ${Number(e.salary || 0).toLocaleString()}</td>
       <td>${e.attendance_pct || 95}%</td>
@@ -5457,15 +5467,25 @@ function renderEmployeeRows(items) {
   }).join('');
 }
 
+function filterHRByBranch(branchId) {
+  const q = (document.getElementById('hr-search')?.value || '').trim().toLowerCase();
+  let list = _hrEmployeesCache;
+  if (branchId && branchId !== 'all') {
+    list = list.filter(e => String(e.branch_id) === String(branchId));
+  }
+  if (q) {
+    list = list.filter(e =>
+      (e.name || '').toLowerCase().includes(q) ||
+      (e.role || '').toLowerCase().includes(q) ||
+      (e.branch_name || '').toLowerCase().includes(q)
+    );
+  }
+  renderEmployeeRows(list);
+}
+
 function searchEmployees(q) {
-  const query = (q || '').toLowerCase();
-  if (!query) { renderEmployeeRows(_hrEmployeesCache); return; }
-  const filtered = _hrEmployeesCache.filter(e =>
-    (e.name || '').toLowerCase().includes(query) ||
-    (e.role || '').toLowerCase().includes(query) ||
-    (e.branch_name || '').toLowerCase().includes(query)
-  );
-  renderEmployeeRows(filtered);
+  const branchId = document.getElementById('hr-branch-filter')?.value || 'all';
+  filterHRByBranch(branchId);
 }
 
 function openEmployeeModal(id = null) {
@@ -6431,6 +6451,10 @@ function populateZReportBranchSelects(branches = []) {
 }
 
 function openAddBranchModal() {
+  if (state.user && state.user.role !== 'owner') {
+    showToast('Only the Business Owner can add new store branches.');
+    return;
+  }
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
   setVal('new-branch-name', '');
   setVal('new-branch-location', '');
@@ -6677,6 +6701,60 @@ async function loadSettingsCache() {
 
 async function loadSettings() {
   loadBranches();
+
+  const isOwner = state.user?.role === 'owner';
+
+  // Toggle "+ Add Branch" button in settings table (Owner Only)
+  const addBranchBtn = document.getElementById('settings-add-branch-btn');
+  if (addBranchBtn) {
+    addBranchBtn.style.display = isOwner ? 'inline-flex' : 'none';
+  }
+
+  // Update Settings View Title & Subtitle for Role Context
+  const titleEl = document.getElementById('settings-view-title');
+  const subEl = document.getElementById('settings-view-subtitle');
+  const saveBtn = document.getElementById('settings-save-btn');
+
+  if (titleEl && subEl) {
+    if (isOwner) {
+      titleEl.textContent = 'System & Store Settings';
+      subEl.textContent = 'Configure enterprise profile, branches, tax and terminal hardware';
+      if (saveBtn) saveBtn.textContent = 'Save Changes';
+    } else {
+      titleEl.textContent = 'Store & Terminal Settings';
+      subEl.textContent = 'View enterprise configuration and configure local terminal hardware';
+      if (saveBtn) saveBtn.textContent = 'Save Terminal Hardware';
+    }
+  }
+
+  // Enterprise fields that only the Owner can modify
+  const enterpriseFields = [
+    'set-business-name',
+    'set-support-email',
+    'set-hq-phone',
+    'set-currency',
+    'set-vat-rate',
+    'set-receipt-header'
+  ];
+
+  enterpriseFields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = !isOwner;
+      el.style.opacity = isOwner ? '1' : '0.75';
+      el.title = isOwner ? '' : 'Enterprise setting — manageable by Business Owner only';
+    }
+  });
+
+  // Local hardware fields are always enabled for terminal configuration
+  ['set-printer', 'set-scanner', 'set-drawer'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = false;
+      el.style.opacity = '1';
+    }
+  });
+
   try {
     const data = await apiGet('/api/settings');
     const s = data.data || {};
@@ -6693,10 +6771,18 @@ async function loadSettings() {
       el.value = s[key];
     });
 
+    // Check if local terminal hardware overrides exist in localStorage
+    try {
+      const localHw = JSON.parse(localStorage.getItem('openfloat_terminal_hardware') || '{}');
+      if (localHw.printer && document.getElementById('set-printer')) document.getElementById('set-printer').value = localHw.printer;
+      if (localHw.scanner && document.getElementById('set-scanner')) document.getElementById('set-scanner').value = localHw.scanner;
+      if (localHw.cash_drawer && document.getElementById('set-drawer')) document.getElementById('set-drawer').value = localHw.cash_drawer;
+    } catch {}
+
     // Apply to live UI (cart VAT label, receipt header, etc.)
     applySettingsToUI();
 
-    showToast('Settings loaded from database');
+    showToast('Settings loaded');
   } catch (e) {
     if (e.code !== 'AUTH_ERROR') {
       showToast('Using default settings — could not reach server');
@@ -6705,6 +6791,23 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+  const isOwner = state.user?.role === 'owner';
+
+  // Save local hardware choices to localStorage for this specific terminal / browser
+  const printer = document.getElementById('set-printer')?.value;
+  const scanner = document.getElementById('set-scanner')?.value;
+  const cash_drawer = document.getElementById('set-drawer')?.value;
+  try {
+    localStorage.setItem('openfloat_terminal_hardware', JSON.stringify({ printer, scanner, cash_drawer }));
+  } catch {}
+
+  // If non-owner (Manager / Staff), only save terminal hardware locally
+  if (!isOwner) {
+    showToast('Terminal hardware settings saved for this workstation.');
+    return;
+  }
+
+  // Owner saves global business and tax configuration to the server
   const updates = {};
   Object.entries(SETTINGS_MAP).forEach(([key, elId]) => {
     const el = document.getElementById(elId);
@@ -6729,11 +6832,9 @@ async function saveSettings() {
     });
     const data = await res.json();
     if (res.ok) {
-      // Merge into cache so all helpers immediately reflect the new values
       state.settingsCache = { ...state.settingsCache, ...updates };
-      // Push changes into every live UI element that depends on settings
       applySettingsToUI();
-      showToast(`${Object.keys(updates).length} setting(s) saved successfully`);
+      showToast(`${Object.keys(updates).length} enterprise setting(s) saved successfully`);
     } else {
       showToast('Error saving settings: ' + (data.error || 'Unknown error'));
     }

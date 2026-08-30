@@ -14,13 +14,13 @@ router.get('/', requireAuth, ctrl.getBranches);
 // GET /api/branches/performance — Owner-Exclusive branch comparative performance metrics
 router.get('/performance', requireAuth, requireRole('owner'), ctrl.getBranchPerformance);
 
-// POST /api/branches — Owner & Manager can create new branches
-router.post('/', requireAuth, requireRole('owner', 'manager'), ctrl.createBranch);
+// POST /api/branches — Owner-Exclusive: create new branches
+router.post('/', requireAuth, requireRole('owner'), ctrl.createBranch);
 
-// PUT /api/branches/:id — Owner & Manager can update branches
-router.put('/:id', requireAuth, requireRole('owner', 'manager'), ctrl.updateBranch);
+// PUT /api/branches/:id — Owner-Exclusive: update branches
+router.put('/:id', requireAuth, requireRole('owner'), ctrl.updateBranch);
 
-// DELETE /api/branches/:id — Owner & Manager can deactivate branches
-router.delete('/:id', requireAuth, requireRole('owner', 'manager'), ctrl.deleteBranch);
+// DELETE /api/branches/:id — Owner-Exclusive: deactivate branches
+router.delete('/:id', requireAuth, requireRole('owner'), ctrl.deleteBranch);
 
 module.exports = router;

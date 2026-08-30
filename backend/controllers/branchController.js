@@ -16,6 +16,9 @@ async function getBranches(req, res) {
 }
 
 async function createBranch(req, res) {
+  if (req.user?.role !== 'owner') {
+    return res.status(403).json({ error: 'Access denied. Only the Business Owner can create new branches.' });
+  }
   try {
     const db = await getDb();
     const { name, location, phone } = req.body;
@@ -47,6 +50,9 @@ async function createBranch(req, res) {
 }
 
 async function updateBranch(req, res) {
+  if (req.user?.role !== 'owner') {
+    return res.status(403).json({ error: 'Access denied. Only the Business Owner can update branches.' });
+  }
   try {
     const db = await getDb();
     const { id } = req.params;
@@ -75,6 +81,9 @@ async function updateBranch(req, res) {
 }
 
 async function deleteBranch(req, res) {
+  if (req.user?.role !== 'owner') {
+    return res.status(403).json({ error: 'Access denied. Only the Business Owner can delete branches.' });
+  }
   try {
     const db = await getDb();
     const { id } = req.params;
@@ -114,10 +123,14 @@ async function getBranchPerformance(req, res) {
         COALESCE(SUM(t.total), 0) AS total_revenue,
         COUNT(t.id) AS transaction_count,
         COALESCE(AVG(t.total), 0) AS avg_order_value,
-        COALESCE(SUM(CASE WHEN t.created_at >= date('now', 'start of day') THEN t.total ELSE 0 END), 0) AS today_revenue,
-        COALESCE(SUM(CASE WHEN t.created_at >= date('now', '-7 days') THEN t.total ELSE 0 END), 0) AS week_revenue,
-        COALESCE(SUM(CASE WHEN t.created_at >= date('now', 'start of month') THEN t.total ELSE 0 END), 0) AS month_revenue,
-        COALESCE(SUM(CASE WHEN t.created_at >= date('now', 'start of year') THEN t.total ELSE 0 END), 0) AS year_revenue,
+        COALESCE(SUM(CASE WHEN date(t.created_at) = date('now', 'localtime') THEN t.total ELSE 0 END), 0) AS today_revenue,
+        COALESCE(COUNT(CASE WHEN date(t.created_at) = date('now', 'localtime') THEN t.id ELSE NULL END), 0) AS today_orders,
+        COALESCE(SUM(CASE WHEN t.created_at >= date('now', 'localtime', '-6 days') THEN t.total ELSE 0 END), 0) AS week_revenue,
+        COALESCE(COUNT(CASE WHEN t.created_at >= date('now', 'localtime', '-6 days') THEN t.id ELSE NULL END), 0) AS week_orders,
+        COALESCE(SUM(CASE WHEN t.created_at >= date('now', 'localtime', 'start of month') THEN t.total ELSE 0 END), 0) AS month_revenue,
+        COALESCE(COUNT(CASE WHEN t.created_at >= date('now', 'localtime', 'start of month') THEN t.id ELSE NULL END), 0) AS month_orders,
+        COALESCE(SUM(CASE WHEN t.created_at >= date('now', 'localtime', 'start of year') THEN t.total ELSE 0 END), 0) AS year_revenue,
+        COALESCE(COUNT(CASE WHEN t.created_at >= date('now', 'localtime', 'start of year') THEN t.id ELSE NULL END), 0) AS year_orders,
         COALESCE(SUM(CASE WHEN LOWER(t.payment_method) = 'cash' THEN t.total ELSE 0 END), 0) AS cash_revenue,
         COALESCE(SUM(CASE WHEN LOWER(t.payment_method) = 'mpesa' THEN t.total ELSE 0 END), 0) AS mpesa_revenue,
         COALESCE(SUM(CASE WHEN LOWER(t.payment_method) IN ('card', 'bank') THEN t.total ELSE 0 END), 0) AS card_revenue,
