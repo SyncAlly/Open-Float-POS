@@ -153,17 +153,23 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS employees (
-      id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      name           TEXT NOT NULL,
-      role           TEXT NOT NULL,
-      branch_id      INTEGER,
-      salary         REAL NOT NULL DEFAULT 0,
-      phone          TEXT,
-      email          TEXT,
-      hire_date      TEXT,
-      status         TEXT DEFAULT 'active',
-      attendance_pct REAL DEFAULT 100,
-      created_at     TEXT DEFAULT (datetime('now'))
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      name               TEXT NOT NULL,
+      role               TEXT NOT NULL,
+      branch_id          INTEGER,
+      salary             REAL NOT NULL DEFAULT 0,
+      hourly_rate        REAL NOT NULL DEFAULT 250,
+      commission_pct     REAL NOT NULL DEFAULT 0,
+      statutory_paye_pct REAL NOT NULL DEFAULT 10,
+      statutory_nssf     REAL NOT NULL DEFAULT 1080,
+      statutory_nhif     REAL NOT NULL DEFAULT 1700,
+      benefits_deduction REAL NOT NULL DEFAULT 0,
+      phone              TEXT,
+      email              TEXT,
+      hire_date          TEXT,
+      status             TEXT DEFAULT 'active',
+      attendance_pct     REAL DEFAULT 100,
+      created_at         TEXT DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS attendance (
@@ -173,6 +179,82 @@ function createTables() {
       status      TEXT NOT NULL DEFAULT 'present',
       notes       TEXT,
       UNIQUE(employee_id, date)
+    );
+
+    CREATE TABLE IF NOT EXISTS time_entries (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id      INTEGER NOT NULL,
+      branch_id        INTEGER NOT NULL,
+      clock_in         TEXT NOT NULL,
+      clock_out        TEXT,
+      regular_hours    REAL DEFAULT 0,
+      overtime_hours   REAL DEFAULT 0,
+      hourly_rate      REAL DEFAULT 250,
+      shift_type       TEXT DEFAULT 'day',
+      differential_pct REAL DEFAULT 0,
+      status           TEXT DEFAULT 'open',
+      created_at       TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS payroll_records (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id        INTEGER NOT NULL,
+      branch_id          INTEGER NOT NULL,
+      period_start       TEXT NOT NULL,
+      period_end         TEXT NOT NULL,
+      regular_pay        REAL DEFAULT 0,
+      overtime_pay       REAL DEFAULT 0,
+      differential_pay   REAL DEFAULT 0,
+      commission_pay     REAL DEFAULT 0,
+      tips_pay           REAL DEFAULT 0,
+      gross_earnings     REAL DEFAULT 0,
+      tax_paye           REAL DEFAULT 0,
+      statutory_nssf     REAL DEFAULT 0,
+      statutory_nhif     REAL DEFAULT 0,
+      shortage_deduction REAL DEFAULT 0,
+      benefits_deduction REAL DEFAULT 0,
+      total_deductions   REAL DEFAULT 0,
+      net_pay            REAL DEFAULT 0,
+      status             TEXT DEFAULT 'approved',
+      created_at         TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS time_entries (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id      INTEGER NOT NULL,
+      branch_id        INTEGER NOT NULL,
+      clock_in         TEXT NOT NULL,
+      clock_out        TEXT,
+      regular_hours    REAL DEFAULT 0,
+      overtime_hours   REAL DEFAULT 0,
+      hourly_rate      REAL DEFAULT 250,
+      shift_type       TEXT DEFAULT 'day',
+      differential_pct REAL DEFAULT 0,
+      status           TEXT DEFAULT 'open',
+      created_at       TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS payroll_records (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id        INTEGER NOT NULL,
+      branch_id          INTEGER NOT NULL,
+      period_start       TEXT NOT NULL,
+      period_end         TEXT NOT NULL,
+      regular_pay        REAL DEFAULT 0,
+      overtime_pay       REAL DEFAULT 0,
+      differential_pay   REAL DEFAULT 0,
+      commission_pay     REAL DEFAULT 0,
+      tips_pay           REAL DEFAULT 0,
+      gross_earnings     REAL DEFAULT 0,
+      tax_paye           REAL DEFAULT 0,
+      statutory_nssf     REAL DEFAULT 0,
+      statutory_nhif     REAL DEFAULT 0,
+      shortage_deduction REAL DEFAULT 0,
+      benefits_deduction REAL DEFAULT 0,
+      total_deductions   REAL DEFAULT 0,
+      net_pay            REAL DEFAULT 0,
+      status             TEXT DEFAULT 'approved',
+      created_at         TEXT DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS purchase_requests (
@@ -352,6 +434,29 @@ function createTables() {
 
   // Add branch_id to purchase_requests (isolates procurement per branch)
   try { _db.run("ALTER TABLE purchase_requests ADD COLUMN branch_id INTEGER"); } catch (e) {}
+
+  // Payroll & time-tracking migrations for existing databases
+  try { _db.run("ALTER TABLE employees ADD COLUMN hourly_rate REAL NOT NULL DEFAULT 250"); } catch (e) {}
+  try { _db.run("ALTER TABLE employees ADD COLUMN commission_pct REAL NOT NULL DEFAULT 0"); } catch (e) {}
+  try { _db.run("ALTER TABLE employees ADD COLUMN statutory_paye_pct REAL NOT NULL DEFAULT 10"); } catch (e) {}
+  try { _db.run("ALTER TABLE employees ADD COLUMN statutory_nssf REAL NOT NULL DEFAULT 1080"); } catch (e) {}
+  try { _db.run("ALTER TABLE employees ADD COLUMN statutory_nhif REAL NOT NULL DEFAULT 1700"); } catch (e) {}
+  try { _db.run("ALTER TABLE employees ADD COLUMN benefits_deduction REAL NOT NULL DEFAULT 0"); } catch (e) {}
+  try { _db.run(`CREATE TABLE IF NOT EXISTS time_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL, branch_id INTEGER NOT NULL,
+    clock_in TEXT NOT NULL, clock_out TEXT, regular_hours REAL DEFAULT 0, overtime_hours REAL DEFAULT 0,
+    hourly_rate REAL DEFAULT 250, shift_type TEXT DEFAULT 'day', differential_pct REAL DEFAULT 0,
+    status TEXT DEFAULT 'open', created_at TEXT DEFAULT (datetime('now'))
+  )`); } catch (e) {}
+  try { _db.run(`CREATE TABLE IF NOT EXISTS payroll_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL, branch_id INTEGER NOT NULL,
+    period_start TEXT NOT NULL, period_end TEXT NOT NULL, regular_pay REAL DEFAULT 0, overtime_pay REAL DEFAULT 0,
+    differential_pay REAL DEFAULT 0, commission_pay REAL DEFAULT 0, tips_pay REAL DEFAULT 0,
+    gross_earnings REAL DEFAULT 0, tax_paye REAL DEFAULT 0, statutory_nssf REAL DEFAULT 0,
+    statutory_nhif REAL DEFAULT 0, shortage_deduction REAL DEFAULT 0, benefits_deduction REAL DEFAULT 0,
+    total_deductions REAL DEFAULT 0, net_pay REAL DEFAULT 0, status TEXT DEFAULT 'approved',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`); } catch (e) {}
 
   persist();
   console.log('[DB] Tables ready.');

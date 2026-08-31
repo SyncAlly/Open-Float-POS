@@ -13,5 +13,6 @@ router.get('/:key', requireAuth, ctrl.getSetting);
 
 // PUT /api/settings        — update settings (owner only — M-Pesa keys, VAT, etc.)
 router.put('/', requireAuth, requireRole('owner'), ctrl.updateSettings);
+router.post('/', requireAuth, requireRole('owner'), ctrl.updateSettings);
 
 module.exports = router;

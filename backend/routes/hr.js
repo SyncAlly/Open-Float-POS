@@ -1,32 +1,32 @@
-/** MODULE 4: HR Routes — with RBAC */
+/** MODULE 4: HR Routes — Clock-In/Out, Payroll, Labor Analytics */
 
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const ctrl = require('../controllers/hrController');
 
-const hrUp      = requireRole('owner', 'manager', 'hr');
+const anyStaff  = requireRole('owner', 'manager', 'hr', 'cashier');
 const managerUp = requireRole('owner', 'manager');
 
-// GET /api/hr/payroll/summary   — payroll summary (hr/manager/owner)
-router.get('/payroll/summary', requireAuth, hrUp, ctrl.getPayrollSummary);
+// Payroll
+router.get('/payroll/summary',   requireAuth, anyStaff,  ctrl.getPayrollSummary);
+router.get('/payroll/calculate', requireAuth, managerUp, ctrl.calculatePayroll);
+router.get('/payroll/export',    requireAuth, managerUp, ctrl.exportPayroll);
 
-// POST /api/hr/attendance       — mark attendance (hr/manager/owner)
-router.post('/attendance', requireAuth, hrUp, ctrl.markAttendance);
+// Clock In / Out (all authenticated staff)
+router.post('/clock-in',    requireAuth, anyStaff, ctrl.clockIn);
+router.post('/clock-out',   requireAuth, anyStaff, ctrl.clockOut);
+router.get('/shift-status', requireAuth, anyStaff, ctrl.getShiftStatus);
 
-// GET /api/hr/employees         — list employees (hr/manager/owner)
-router.get('/employees', requireAuth, hrUp, ctrl.getEmployees);
+// Labor Analytics
+router.get('/labor-analytics', requireAuth, managerUp, ctrl.getLaborAnalytics);
 
-// GET /api/hr/employees/:id     — single employee (hr/manager/owner)
-router.get('/employees/:id', requireAuth, hrUp, ctrl.getEmployee);
-
-// POST /api/hr/employees        — create employee (manager/owner only)
-router.post('/employees', requireAuth, managerUp, ctrl.createEmployee);
-
-// PUT /api/hr/employees/:id     — update employee (manager/owner only)
-router.put('/employees/:id', requireAuth, managerUp, ctrl.updateEmployee);
-
-// DELETE /api/hr/employees/:id  — terminate employee (owner only)
-router.delete('/employees/:id', requireAuth, requireRole('owner'), ctrl.deleteEmployee);
+// Employees
+router.get('/employees',       requireAuth, anyStaff,  ctrl.getEmployees);
+router.get('/employees/:id',   requireAuth, anyStaff,  ctrl.getEmployee);
+router.post('/employees',      requireAuth, managerUp, ctrl.createEmployee);
+router.put('/employees/:id',   requireAuth, managerUp, ctrl.updateEmployee);
+router.delete('/employees/:id',requireAuth, requireRole('owner'), ctrl.deleteEmployee);
 
 module.exports = router;
+

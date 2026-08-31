@@ -32,12 +32,15 @@ async function createDelivery(req, res) {
 
     if (!destination) return res.status(400).json({ error: 'Destination is required.' });
 
+    // Resolve branch: from body, then logged-in user's branch, then default to 1
+    const resolvedBranchId = branch_id || req.user?.branch_id || 1;
+
     const ref = `DEL-${Math.floor(1000 + Math.random() * 9000)}`;
     const result = exec(db,
       `INSERT INTO deliveries (ref, customer_id, driver_name, van_number, origin, destination, status, eta, branch_id)
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
       [ref, customer_id || null, driver_name || null, van_number || null,
-       origin || 'Main Warehouse', destination, eta || '30 min', branch_id || 1]
+       origin || 'Main Warehouse', destination, eta || '30 min', resolvedBranchId]
     );
 
     res.status(201).json({ success: true, id: result.lastInsertRowid, ref, message: 'Delivery dispatched.' });

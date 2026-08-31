@@ -1,13 +1,13 @@
 # Multimedia University of Kenya (MMU)
 ## Faculty of Computing and Information Technology — Industrial Attachment Logbook
-**Student Attachment Record: Weeks 1 to 7 (June 29, 2026 – August 14, 2026)**  
+**Student Attachment Record: Weeks 1 to 8 (June 29, 2026 – August 22, 2026)**  
 **Company**: OpenFloat  
 **Project**: OpenFloat POS X Platform  
 
 ---
 
 ## WEEK 1: Orientation & Core Architecture Setup
-**Dates**: June 29, 2026 – July 3, 2026
+**Dates**: June 29, 2026 – July 4, 2026
 
 ### Daily Log
 
@@ -18,6 +18,7 @@
 | **Wednesday** | 01/07/2026 | I implemented the Node.js Express API server engine (`backend/server.js`), created authentication middleware (`requireAuth`), and wrote the user authentication controller for login and credential validation (`POST /api/auth/login`). | 8 | Implementing JWT authentication gave me a deeper understanding of stateless session security. |
 | **Thursday** | 02/07/2026 | I built the Single Page Application (SPA) foundation in `index.html` and `css/style.css`, establishing the modern design tokens, CSS variables, glassmorphic UI components, and universal single login interface. | 8 | Crafting a clean, modular CSS design system early saved significant time during component styling. |
 | **Friday** | 03/07/2026 | I created the frontend state management engine and view router in `js/app.js` (`navTo()`, `checkSession()`), enabling persistent user sessions via `localStorage` and dynamic topbar user profile indicators. | 8 | Successfully linking the frontend state with local storage ensured seamless auto-login behavior. |
+| **Saturday** | 04/07/2026 | I performed code bug checks on SQLite database connection initialization, verified JWT token generation edge cases, and wrote unit test scripts for user authentication. | 8 | Thorough testing on database initialization confirmed the backend was stable for frontend integration. |
 
 ### Student’s Weekly Report (Week 1)
 
@@ -30,7 +31,7 @@ A minor challenge I encountered was handling asynchronous database initializatio
 ---
 
 ## WEEK 2: Executive Dashboard & POS Sales Terminal
-**Dates**: July 6, 2026 – July 10, 2026
+**Dates**: July 6, 2026 – July 11, 2026
 
 ### Daily Log
 
@@ -41,6 +42,7 @@ A minor challenge I encountered was handling asynchronous database initializatio
 | **Wednesday** | 08/07/2026 | I developed the POS Sales Terminal catalog interface (`#view-sales`), implementing product category filter tabs, instant text/SKU search inputs, and visual stock status badges. | 8 | Optimizing DOM rendering for product cards significantly improved cashier search speeds. |
 | **Thursday** | 09/07/2026 | I built the shopping cart engine in `js/app.js` (`addToCart()`, `updateQty()`), supporting quantity increments, item deletions, custom line-item discounts, and real-time subtotal calculations. | 8 | Handling state mutations immutably kept cart subtotal calculations accurate. |
 | **Friday** | 10/07/2026 | I created multi-channel checkout processing (Cash with auto-change calculation, Card PDQ references, and Split Payments), held order queues (`openHeldOrders()`), and receipt generation logic. | 8 | Adding held order queues allowed cashiers to temporarily pause transactions during busy periods. |
+| **Saturday** | 11/07/2026 | I tested POS multi-channel payments across different screen resolutions, conducted held-order queue stress tests, and verified receipt print CSS styling. | 8 | Verifying print stylesheet rules ensured thermal receipts rendered cleanly across different browsers. |
 
 ### Student’s Weekly Report (Week 2)
 
@@ -53,7 +55,7 @@ A mistake I made during chart initialization was failing to call `chart.destroy(
 ---
 
 ## WEEK 3: Inventory Control & Stock Health Analytics
-**Dates**: July 13, 2026 – July 17, 2026
+**Dates**: July 13, 2026 – July 18, 2026
 
 ### Daily Log
 
@@ -64,6 +66,7 @@ A mistake I made during chart initialization was failing to call `chart.destroy(
 | **Wednesday** | 15/07/2026 | I built the product creation and editing modal (`#product-modal`), allowing store managers to register items with SKU, category, buying price, selling price, reorder level, unit, and expiry date. | 8 | Reusing a single modal for both creation and editing kept the HTML template clean. |
 | **Thursday** | 16/07/2026 | I implemented automated profit margin calculations and stock health badges (`badge-green`, `badge-amber`, `badge-red`) to flag items dropping below reorder thresholds. | 8 | Calculating profit margins dynamically helped store owners identify high-margin inventory. |
 | **Friday** | 17/07/2026 | I built product search and multi-criteria filtering logic (`filterInventory()`), allowing managers to query items by category, keyword, status, or warehouse location. | 8 | Filtering cached data on the client side provided instant search responses without server latency. |
+| **Saturday** | 18/07/2026 | I conducted low-stock threshold alert tests, verified barcode scanner keyboard emulation inputs, and bug checked product editing modal form validations. | 8 | Testing hardware barcode inputs ensured cashiers could scan items without keyboard focus issues. |
 
 ### Student’s Weekly Report (Week 3)
 
@@ -76,7 +79,7 @@ One challenge I faced was handling floating-point arithmetic errors when computi
 ---
 
 ## WEEK 4: Stock Movement Audits & Services Catalog (Field Supervisor Feedback Phase 1)
-**Dates**: July 20, 2026 – July 24, 2026
+**Dates**: July 20, 2026 – July 25, 2026
 
 ### Daily Log
 
@@ -87,6 +90,7 @@ One challenge I faced was handling floating-point arithmetic errors when computi
 | **Wednesday** | 22/07/2026 | I created the stock movement entry modal (`#stock-movement-modal`), allowing warehouse staff to log manual stock recount adjustments and view real-time audit logs. | 8 | Enabling manual recount adjustments gave store managers a tool for monthly stock taking. |
 | **Thursday** | 23/07/2026 | I developed the billable Services Catalog module (`#view-services`), allowing non-inventory services (repair, delivery, installation, maintenance) to be managed and billed at checkout. | 8 | Adding service support expanded the application's usability to service-based retail stores. |
 | **Friday** | 24/07/2026 | I created the backend services controller (`backend/controllers/servicesController.js`) and service management modal (`#service-modal`) to configure service codes, hourly rates, and VAT flags. | 8 | Differentiating billable services from physical inventory prevented accidental stock decrements. |
+| **Saturday** | 25/07/2026 | I audited stock movement ledger records for data consistency, tested non-inventory service items during checkout, and verified audit trail timestamps. | 8 | Validating ledger consistency ensured inventory shrinkage records remained accurate and immutable. |
 
 ### Student’s Weekly Report (Week 4)
 
@@ -99,7 +103,7 @@ A initial mistake occurred when processing service items at checkout: the POS ch
 ---
 
 ## WEEK 5: Hire Purchase, Suppliers & Receivables (Field Supervisor Feedback Phase 2)
-**Dates**: July 27, 2026 – July 31, 2026
+**Dates**: July 27, 2026 – August 1, 2026
 
 ### Daily Log
 
@@ -110,6 +114,7 @@ A initial mistake occurred when processing service items at checkout: the POS ch
 | **Wednesday** | 29/07/2026 | I created the Accounts Receivable & Customer Debts module (`#view-receivables`), featuring a high-visibility summary banner displaying total company receivables and overdue debt balances. | 8 | Highlighting 30+ day overdue debt metrics gives credit control teams immediate visibility. |
 | **Thursday** | 30/07/2026 | I built customer debt tracking ledgers, displaying individual credit limits, overdue days, risk level badges (`badge-red` HIGH, `badge-amber` MEDIUM), and payment recording modal helpers. | 8 | Risk level badges help staff quickly identify high-risk credit customers before extending credit. |
 | **Friday** | 31/07/2026 | I integrated backend controllers (`receivablesController.js`, `suppliersController.js`, `hirePurchaseController.js`) and verified CSV export functions for all three modules. | 8 | Implementing CSV exports across all modules provided store managers with easy report downloads. |
+| **Saturday** | 01/08/2026 | I tested hire purchase installment calculations under edge-case down payment amounts, verified supplier CSV data exports, and checked customer debt aging updates. | 8 | Running edge-case installment tests confirmed the credit accounting logic handled rounding properly. |
 
 ### Student’s Weekly Report (Week 5)
 
@@ -122,7 +127,7 @@ A challenge I encountered was maintaining sync between customer credit balances 
 ---
 
 ## WEEK 6: Z-Reports, Bulk Upload & Security Hardening (Field Supervisor Feedback Phase 3)
-**Dates**: August 3, 2026 – August 7, 2026
+**Dates**: August 3, 2026 – August 8, 2026
 
 ### Daily Log
 
@@ -133,6 +138,7 @@ A challenge I encountered was maintaining sync between customer credit balances 
 | **Wednesday** | 05/08/2026 | I performed a comprehensive security audit of the application, created a `.gitignore` file to protect `.env` secrets, and generated cryptographically strong 64-byte JWT secrets. | 8 | Auditing code for security vulnerabilities before deployment prevented accidental credential leaks. |
 | **Thursday** | 06/08/2026 | I implemented server-side Role-Based Access Control (`middleware/rbac.js`) and login rate-limiting (`express-rate-limit`, 10 attempts/15 min) to block brute-force attacks on auth endpoints. | 8 | Restricting administrative endpoints by role ensures cashiers cannot alter system settings. |
 | **Friday** | 07/08/2026 | I locked down CORS policies in `server.js`, added a global error handler to prevent internal stack trace leaks in production, and updated the pre-deployment security checklist in `README.md`. | 8 | Setting up environment-aware error handling prepared the application for production deployment. |
+| **Saturday** | 08/08/2026 | I conducted security penetration tests on auth rate limiting, tested bulk CSV imports with corrupted sample rows, and verified Z-report end-of-day print layouts. | 8 | Stress testing the bulk uploader with invalid CSV rows ensured error handling failed gracefully. |
 
 ### Student’s Weekly Report (Week 6)
 
@@ -145,7 +151,7 @@ A major security vulnerability I discovered during the audit was that the Google
 ---
 
 ## WEEK 7: Advanced Modules, Role Restrictions & UX Polish
-**Dates**: August 10, 2026 – August 14, 2026
+**Dates**: August 10, 2026 – August 15, 2026
 
 ### Daily Log
 
@@ -156,6 +162,7 @@ A major security vulnerability I discovered during the audit was that the Google
 | **Wednesday** | 12/08/2026 | I integrated the AI Business Assistant module (`#view-ai`), connecting the Google Gemini API for natural language queries regarding stock restocks and profit performance. | 8 | Connecting conversational AI provided store owners with instant business insights. |
 | **Thursday** | 13/08/2026 | I updated role-based view permissions in `js/app.js` (`applyRolePermissions()`), restricting Cashiers from accessing Executive Dashboards and redirecting Cashier logins to the POS Sales Terminal. | 8 | Tailoring landing views by role ensured cashiers are directed straight to their working terminal. |
 | **Friday** | 14/08/2026 | I optimized POS category filtering using `.includes()` substring matching and overhauled the Sales History view into an in-app modal with itemized receipt breakdowns and CSV export. | 8 | Replacing pop-up print windows with inline receipt modals created a smoother user experience. |
+| **Saturday** | 15/08/2026 | I tested Leaflet delivery route mapping on responsive mobile viewports, verified Gemini AI assistant fallback responses during network errors, and audited role view access. | 8 | Adding offline fallback handlers ensured the AI assistant displayed helpful error banners when disconnected. |
 
 ### Student’s Weekly Report (Week 7)
 
@@ -164,3 +171,27 @@ During Week 7, I integrated the final advanced modules—Human Resources & Payro
 I deepened my technical knowledge of third-party API integrations, mapping libraries (Leaflet.js), and role-based frontend routing. I also improved client-side data handling by fixing category filter matching and replacing disruptive pop-up windows with clean in-app receipt modals.
 
 A bug I fixed on Friday was in the POS category filtering system: category buttons passed short keys (e.g., `"food"`), whereas database products stored full names (e.g., `"food & beverage"`). Strict equality checking (`===`) resulted in zero matching products. I resolved this by updating the filter to use `.includes()` substring matching, restoring correct product filtering across all category tabs.
+
+---
+
+## WEEK 8: Time & Attendance, Sales-Driven Compensation & Final Project Handover (Final Week)
+**Dates**: August 17, 2026 – August 22, 2026
+
+### Daily Log
+
+| Day | Date | Work Done | Hours Worked | Remarks by Intern |
+|---|---|---|---|---|
+| **Monday** | 17/08/2026 | I added password visibility eye toggles on login and staff modals, restricted branch creation to Owner in Settings, and synced all-branch Dashboard KPI cards with active date filters. | 8 | Adding password visibility improved login UX while branch creation restrictions strengthened system RBAC. |
+| **Tuesday** | 18/08/2026 | I built the multi-branch Branch Comparison time filter (`#comp-period-select`) and refactored HR Management into its own dedicated standalone navigation view with enterprise branch filtering. | 8 | Isolating HR as a standalone module streamlined multi-branch staff oversight. |
+| **Wednesday** | 19/08/2026 | I integrated the POS terminal Clock-In/Clock-Out widget (`#terminal-clock-widget`), removed legacy manual attendance across branches, and automated shift differentials and overtime tracking. | 8 | Direct POS terminal clocking automated shift tracking and eliminated manual attendance logging. |
+| **Thursday** | 20/08/2026 | I implemented sales-driven commission calculations from cashier attribution, statutory tax deductions (PAYE, NSSF, NHIF), and register shift cash shortage deductions. | 8 | Linking commissions to cashier sales motivated staff while automated shortage deductions ensured drawer balance. |
+| **Friday** | 21/08/2026 | I developed live Labor-to-Sales analytics (`/api/hr/labor-analytics`), built the itemized Pay Stub Generator with CSV export, and added owner-configurable payroll and shift rules in Settings. | 8 | Providing live labor analytics and customizable overtime rules completed the platform's financial ERP suite. |
+| **Saturday** | 22/08/2026 | I conducted final end-to-end user acceptance testing, completed project technical documentation, and finalized the industrial attachment handover with my field supervisor. | 8 | Concluding the project with full validation provided a satisfying finish to the attachment period. |
+
+### Student’s Weekly Report (Week 8)
+
+In my final week of attachment, I completed the Time & Attendance, Sales-Driven Compensation, Labor Analytics, and multi-branch management modules for OpenFloat POS X. I built the register terminal clock widget, replaced the legacy manual attendance system with automated shift tracking and differentials, implemented cashier sales commissions alongside statutory deductions (PAYE, NSSF, NHIF), and created live Labor-to-Sales analytics with an itemized Pay Stub Generator.
+
+I gained practical experience building advanced payroll engines, linking POS transaction attribution with commission payouts, and writing dynamic query aggregations for labor efficiency benchmarks. I also reinforced my knowledge of role-based security by restricting branch creation and overtime rule customization strictly to the Business Owner.
+
+A challenge I encountered on Wednesday was ensuring shift shortages and sales commissions calculated accurately across custom date ranges without double-counting transactions. I resolved this by scoping SQL aggregation queries strictly to the cashier's user ID and shift timestamps. On Saturday, I completed final system verification and successfully handed over the completed OpenFloat POS X platform to my field supervisor, concluding a rewarding 8-week industrial attachment.

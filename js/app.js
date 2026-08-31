@@ -747,6 +747,7 @@ function triggerViewLoad(viewId) {
   } else if (viewId === 'sales') {
     loadCategories();
     loadPOSProducts().then(() => { state.viewLoadedBranch['sales'] = curBranchId; });
+    initTerminalClock();
   } else if (viewId === 'suppliers') {
     loadSuppliers().then(() => { state.viewLoadedBranch['suppliers'] = curBranchId; });
   } else if (viewId === 'hire-purchase') {
@@ -5377,45 +5378,36 @@ async function loadHR() {
 
       setEl('hr-kpi-total', d.total_employees || 0);
       setEl('hr-kpi-branches', isEnterprise ? 'Across all active branches' : (state.currentBranch?.name || 'This branch'));
-      setEl('hr-kpi-present', d.present_today || 0);
-      setEl('hr-kpi-rate', `${d.avg_attendance || 0}% attendance rate`);
+      setEl('hr-kpi-present', d.clocked_in_now || 0);
+      setEl('hr-kpi-rate', `${d.clocked_in_now || 0} active on terminal`);
       setEl('hr-kpi-payroll', fmtKES(d.total_payroll || 0));
+      setEl('hr-kpi-leave', d.shifts_today || 0);
+      setEl('hr-kpi-leave-sub', `${d.shifts_today || 0} clock-in events`);
 
-      const leaveOrAbsent = (d.on_leave || 0) + (d.absent || 0);
-      setEl('hr-kpi-leave', leaveOrAbsent);
-      setEl('hr-kpi-leave-sub', `${d.on_leave || 0} on leave · ${d.absent || 0} absent`);
-
-      if (!state.chartInstances.attend || !state.chartInstances.payroll) {
+      if (!state.chartInstances.attend) {
         initHRCharts();
       }
 
       if (state.chartInstances.attend) {
         const history = summaryRes.history || [];
         const labels = [];
-        const presentData = [];
-        const absentData = [];
+        const hoursData = [];
         
         const today = new Date();
         for (let i = 13; i >= 0; i--) {
           const dDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
           const dateStr = dDate.toISOString().slice(0, 10);
-          
           labels.push(dDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-          
           const match = history.find(h => h.date === dateStr);
-          presentData.push(match ? match.present : 0);
-          absentData.push(match ? match.absent : 0);
+          hoursData.push(match ? parseFloat(match.hours || 0) : 0);
         }
         
         state.chartInstances.attend.data.labels = labels;
-        state.chartInstances.attend.data.datasets[0].data = presentData;
-        state.chartInstances.attend.data.datasets[1].data = absentData;
+        if (state.chartInstances.attend.data.datasets[0]) {
+          state.chartInstances.attend.data.datasets[0].label = 'Hours Worked';
+          state.chartInstances.attend.data.datasets[0].data = hoursData;
+        }
         state.chartInstances.attend.update();
-      }
-      if (state.chartInstances.payroll) {
-        const payroll = d.total_payroll || 0;
-        state.chartInstances.payroll.data.datasets[0].data = payroll > 0 ? [Math.round(payroll * 0.7), Math.round(payroll * 0.2), Math.round(payroll * 0.1)] : [0, 0, 0];
-        state.chartInstances.payroll.update();
       }
     }
 
@@ -5423,6 +5415,22 @@ async function loadHR() {
     _hrEmployeesCache = (empRes && empRes.data) || [];
     const activeBranchFilter = branchFilterEl?.value || 'all';
     filterHRByBranch(activeBranchFilter);
+
+    // Populate Pay Stub Employee Selector & Date Defaults
+    const payEmpSelect = document.getElementById('paystub-employee-select');
+    if (payEmpSelect) {
+      payEmpSelect.innerHTML = '<option value="">— Select Employee —</option>' +
+        _hrEmployeesCache.map(e => `<option value="${e.id}">${e.name} (${e.role || 'Staff'} · ${e.branch_name || 'Branch'})</option>`).join('');
+    }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+    const psStartEl = document.getElementById('paystub-start');
+    const psEndEl   = document.getElementById('paystub-end');
+    if (psStartEl && !psStartEl.value) psStartEl.value = startOfMonth;
+    if (psEndEl && !psEndEl.value) psEndEl.value = todayStr;
+
+    // Load Live Labor-to-Sales Analytics
+    loadLaborAnalytics();
 
   } catch (e) {
     console.error('[loadHR] error:', e);
@@ -5439,9 +5447,9 @@ function renderEmployeeRows(items) {
   }
 
   tbody.innerHTML = items.map(e => {
-    const statusMap = { present: 'badge-green', on_leave: 'badge-amber', absent: 'badge-red', terminated: 'badge-red' };
+    const statusMap = { active: 'badge-green', present: 'badge-green', on_leave: 'badge-amber', absent: 'badge-amber', terminated: 'badge-red' };
     const badgeClass = statusMap[e.status] || 'badge-green';
-    const statusText = (e.status || 'present').replace('_', ' ').toUpperCase();
+    const statusText = (e.status || 'active').replace('_', ' ').toUpperCase();
     const initials = (e.name || 'EM').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     const colors = ['#FFF7ED;color:#F97316', '#F0FDF4;color:#10B981', '#FFF7ED;color:#F59E0B', '#F5F3FF;color:#8B5CF6'];
     const colorStyle = colors[Math.abs(e.id || 0) % colors.length];
@@ -5450,17 +5458,20 @@ function renderEmployeeRows(items) {
       <td>
         <div class="cell-user">
           <div class="av sm" style="background:${colorStyle.split(';')[0].replace('#','').length===6?'#'+colorStyle.split(';')[0]:'#EEF2FF'};color:${colorStyle.split('color:')[1]||'#4F46E5'}">${initials}</div>
-          <strong>${e.name}</strong>
+          <div>
+            <strong>${e.name}</strong>
+            <div style="font-size:11px;color:var(--text-muted);">KES ${Number(e.hourly_rate || 250).toLocaleString()}/hr · ${e.commission_pct || 0}% comm</div>
+          </div>
         </div>
       </td>
       <td>${e.role || 'Staff'}</td>
       <td><span class="badge" style="background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border);font-weight:600;">${e.branch_name || 'Main Branch'}</span></td>
       <td><span class="badge ${badgeClass}">${statusText}</span></td>
       <td>KES ${Number(e.salary || 0).toLocaleString()}</td>
-      <td>${e.attendance_pct || 95}%</td>
+      <td>${e.attendance_pct || 100}%</td>
       <td style="white-space:nowrap;">
         <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openEmployeeModal(${e.id})">Edit</button>
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openAttendanceModal(${e.id})">Attendance</button>
+        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openPayStubForEmployee(${e.id})">Pay Stub</button>
         ${showDelete ? `<button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}
       </td>
     </tr>`;
@@ -5490,15 +5501,21 @@ function searchEmployees(q) {
 
 function openEmployeeModal(id = null) {
   populateEmpBranchDropdown(state.branchesCache || []);
-  const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val || ''; };
+  const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val !== undefined && val !== null ? val : ''; };
   const titleEl = document.getElementById('emp-modal-title');
 
   setVal('emp-id', '');
   setVal('emp-name', '');
   setVal('emp-role', '');
   setVal('emp-branch', '1');
-  setVal('emp-status', 'present');
+  setVal('emp-status', 'active');
   setVal('emp-salary', '');
+  setVal('emp-hourly-rate', '250');
+  setVal('emp-commission-pct', '0');
+  setVal('emp-paye-pct', '10');
+  setVal('emp-nssf', '1080');
+  setVal('emp-nhif', '1700');
+  setVal('emp-benefits', '0');
   setVal('emp-phone', '');
   setVal('emp-email', '');
 
@@ -5520,8 +5537,14 @@ function openEmployeeModal(id = null) {
       setVal('emp-name', e.name);
       setVal('emp-role', e.role);
       setVal('emp-branch', e.branch_id || '1');
-      setVal('emp-status', e.status || 'present');
+      setVal('emp-status', e.status || 'active');
       setVal('emp-salary', e.salary);
+      setVal('emp-hourly-rate', e.hourly_rate ?? 250);
+      setVal('emp-commission-pct', e.commission_pct ?? 0);
+      setVal('emp-paye-pct', e.statutory_paye_pct ?? 10);
+      setVal('emp-nssf', e.statutory_nssf ?? 1080);
+      setVal('emp-nhif', e.statutory_nhif ?? 1700);
+      setVal('emp-benefits', e.benefits_deduction ?? 0);
       setVal('emp-phone', e.phone);
       setVal('emp-email', e.email);
 
@@ -5553,12 +5576,25 @@ async function submitEmployeeModal() {
   const name = document.getElementById('emp-name')?.value.trim();
   const role = document.getElementById('emp-role')?.value.trim();
   const branch_id = parseInt(document.getElementById('emp-branch')?.value) || 1;
-  const status = document.getElementById('emp-status')?.value || 'present';
+  const status = document.getElementById('emp-status')?.value || 'active';
   const salary = parseFloat(document.getElementById('emp-salary')?.value) || 0;
+  const hourly_rate = parseFloat(document.getElementById('emp-hourly-rate')?.value) || 250;
+  const commission_pct = parseFloat(document.getElementById('emp-commission-pct')?.value) || 0;
+  const statutory_paye_pct = parseFloat(document.getElementById('emp-paye-pct')?.value) || 10;
+  const statutory_nssf = parseFloat(document.getElementById('emp-nssf')?.value) || 1080;
+  const statutory_nhif = parseFloat(document.getElementById('emp-nhif')?.value) || 1700;
+  const benefits_deduction = parseFloat(document.getElementById('emp-benefits')?.value) || 0;
   const phone = document.getElementById('emp-phone')?.value.trim();
   const email = document.getElementById('emp-email')?.value.trim();
 
   if (!name || !role) { showToast('Employee name and role are required'); return; }
+
+  const payload = {
+    name, role, branch_id, status, salary,
+    hourly_rate, commission_pct, statutory_paye_pct,
+    statutory_nssf, statutory_nhif, benefits_deduction,
+    phone, email
+  };
 
   try {
     let res;
@@ -5566,10 +5602,11 @@ async function submitEmployeeModal() {
       res = await fetch(`/api/hr/employees/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (state.token || '') },
-        body: JSON.stringify({ name, role, branch_id, status, salary, phone, email })
+        body: JSON.stringify(payload)
       }).then(r => r.json());
     } else {
-      res = await apiPost('/api/hr/employees', { name, role, branch_id, salary, phone, email, hire_date: new Date().toISOString().slice(0,10) });
+      payload.hire_date = new Date().toISOString().slice(0, 10);
+      res = await apiPost('/api/hr/employees', payload);
     }
 
     // Process system login account creation / update
@@ -5622,7 +5659,7 @@ async function submitEmployeeModal() {
 }
 
 async function terminateEmployee(id, name) {
-  if (!confirm(`Permanently delete employee "${name}" from records?\nTheir attendance history will also be removed. This cannot be undone.`)) return;
+  if (!confirm(`Permanently delete employee "${name}" from records?\nTheir time entries and payroll records will also be removed. This cannot be undone.`)) return;
   try {
     const res = await fetch(`/api/hr/employees/${id}`, {
       method: 'DELETE',
@@ -5640,46 +5677,249 @@ async function terminateEmployee(id, name) {
   }
 }
 
-function openAttendanceModal(employeeId = null) {
-  const selectEl = document.getElementById('att-employee');
-  if (selectEl) {
-    selectEl.innerHTML = '<option value="">— Select Employee —</option>';
-    _hrEmployeesCache.forEach(e => {
-      const opt = document.createElement('option');
-      opt.value = e.id;
-      opt.textContent = `${e.name} (${e.role || 'Staff'})`;
-      selectEl.appendChild(opt);
-    });
-    if (employeeId) selectEl.value = employeeId;
-  }
+// ─────────────── LABOR ANALYTICS ───────────────
 
-  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
-  setVal('att-date', new Date().toISOString().slice(0, 10));
-  setVal('att-status', 'present');
-  setVal('att-notes', '');
-
-  document.getElementById('attendance-modal')?.classList.remove('hidden');
-}
-
-async function submitAttendanceModal() {
-  const employee_id = parseInt(document.getElementById('att-employee')?.value);
-  const date = document.getElementById('att-date')?.value;
-  const status = document.getElementById('att-status')?.value || 'present';
-  const notes = document.getElementById('att-notes')?.value.trim();
-
-  if (!employee_id || !date) { showToast('Please select employee and date'); return; }
-
+async function loadLaborAnalytics() {
+  const period = document.getElementById('labor-period-select')?.value || 'week';
+  const branchId = state.currentBranch?.id === 'all' ? 'all' : (state.currentBranch?.id || 'all');
   try {
-    const res = await apiPost('/api/hr/attendance', { employee_id, date, status, notes });
-    if (res.success) {
-      showToast('Attendance recorded!');
-      closeModal('attendance-modal');
-      loadHR();
-    } else {
-      showToast(res.error || 'Failed to record attendance');
+    const res = await apiGet(`/api/hr/labor-analytics?period=${period}&branch_id=${branchId}`);
+    if (res && res.success && res.data) {
+      const d = res.data;
+      const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      setEl('labor-ratio-pct', `${d.labor_ratio_pct || 0}%`);
+      setEl('labor-total-cost', `KES ${Number(d.total_labor_cost || 0).toLocaleString()}`);
+      setEl('labor-total-hours', `${d.total_hours || 0} hrs`);
+      setEl('labor-gross-sales', `KES ${Number(d.gross_sales || 0).toLocaleString()}`);
+      setEl('labor-live-shifts', `${d.live_shifts || 0} staff`);
+
+      const badgeEl = document.getElementById('labor-ratio-badge');
+      if (badgeEl) {
+        badgeEl.className = 'badge ' + (d.labor_status === 'healthy' ? 'badge-healthy' : d.labor_status === 'monitor' ? 'badge-monitor' : d.labor_status === 'critical' ? 'badge-critical' : 'badge-healthy');
+        badgeEl.textContent = d.labor_status === 'healthy' ? 'Healthy Labor Cost (<18%)' : d.labor_status === 'monitor' ? 'Moderate Labor Cost (18-25%)' : d.labor_status === 'critical' ? 'High Labor Ratio (>25%)' : 'No Sales Recorded';
+      }
+
+      const bBreakdownEl = document.getElementById('labor-branch-breakdown');
+      if (bBreakdownEl && d.branch_breakdown && d.branch_breakdown.length > 0) {
+        bBreakdownEl.innerHTML = '<strong style="color:var(--text-primary);margin-bottom:2px;">Branch Breakdown:</strong>' +
+          d.branch_breakdown.map(b => `<div style="display:flex;justify-content:space-between;"><span>${b.branch_name || 'Branch'}</span><span>${b.hours || 0} hrs (KES ${Number(b.labor_cost || 0).toLocaleString()})</span></div>`).join('');
+      } else if (bBreakdownEl) {
+        bBreakdownEl.innerHTML = '';
+      }
     }
   } catch (e) {
-    showToast('Error recording attendance');
+    console.error('[loadLaborAnalytics]', e);
+  }
+}
+
+// ─────────────── PAYROLL & PAY STUB GENERATION ───────────────
+
+function openPayStubForEmployee(empId) {
+  const selectEl = document.getElementById('paystub-employee-select');
+  if (selectEl) {
+    selectEl.value = empId;
+    generatePayStub();
+    document.getElementById('paystub-result')?.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+async function generatePayStub() {
+  const employeeId = document.getElementById('paystub-employee-select')?.value;
+  const start = document.getElementById('paystub-start')?.value;
+  const end = document.getElementById('paystub-end')?.value;
+
+  if (!employeeId) { showToast('Please select an employee first'); return; }
+  if (!start || !end) { showToast('Please select start and end dates'); return; }
+
+  try {
+    const res = await apiGet(`/api/hr/payroll/calculate?employee_id=${employeeId}&period_start=${start}&period_end=${end}`);
+    if (res && res.success && res.data) {
+      const d = res.data;
+      const fmt = num => 'KES ' + Number(num || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+      setEl('ps-reg-hours', d.earnings.regular_hours || 0);
+      setEl('ps-reg-pay', fmt(d.earnings.regular_pay));
+      setEl('ps-ot-hours', d.earnings.overtime_hours || 0);
+      setEl('ps-ot-pay', fmt(d.earnings.overtime_pay));
+      setEl('ps-sales-ref', fmt(d.earnings.sales_total));
+      setEl('ps-commission', fmt(d.earnings.commission_pay));
+      setEl('ps-gross', fmt(d.earnings.gross_earnings));
+
+      setEl('ps-paye', fmt(d.deductions.tax_paye));
+      setEl('ps-nssf', fmt(d.deductions.statutory_nssf));
+      setEl('ps-nhif', fmt(d.deductions.statutory_nhif));
+      setEl('ps-shortage', fmt(d.deductions.shortage_deduction));
+      setEl('ps-benefits', fmt(d.deductions.benefits_deduction));
+      setEl('ps-total-deductions', fmt(d.deductions.total_deductions));
+
+      setEl('ps-net-pay', fmt(d.net_pay));
+      setEl('ps-employee-name', `${d.employee.name} (${d.employee.role || 'Staff'} · ${d.employee.branch || 'Branch'})`);
+      setEl('ps-period-label', `Period: ${d.period.start} to ${d.period.end}`);
+
+      const resultBox = document.getElementById('paystub-result');
+      if (resultBox) resultBox.style.display = 'block';
+      showToast(`Pay stub generated for ${d.employee.name}`);
+    } else {
+      showToast(res.error || 'Failed to calculate pay stub');
+    }
+  } catch (e) {
+    console.error('[generatePayStub]', e);
+    showToast('Error calculating pay stub');
+  }
+}
+
+async function exportPayrollCSV() {
+  const start = document.getElementById('paystub-start')?.value || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const end   = document.getElementById('paystub-end')?.value || new Date().toISOString().slice(0, 10);
+  const branchId = state.currentBranch?.id === 'all' ? 'all' : (state.currentBranch?.id || 'all');
+
+  try {
+    const res = await apiGet(`/api/hr/payroll/export?period_start=${start}&period_end=${end}&branch_id=${branchId}`);
+    if (res && res.success && res.data && res.data.length > 0) {
+      const headers = ['Employee Name', 'Role', 'Email', 'Regular Hours', 'Overtime Hours', 'Regular Pay (KES)', 'Overtime Pay (KES)', 'Commission Pay (KES)', 'Gross Earnings (KES)', 'PAYE Tax (KES)', 'NSSF (KES)', 'NHIF (KES)', 'Benefits Deduction (KES)', 'Register Shortages (KES)', 'Total Deductions (KES)', 'Net Pay (KES)'];
+      const rows = res.data.map(r => [
+        `"${(r.employee_name || '').replace(/"/g, '""')}"`,
+        `"${(r.role || '').replace(/"/g, '""')}"`,
+        `"${(r.email || '').replace(/"/g, '""')}"`,
+        r.regular_hours,
+        r.overtime_hours,
+        r.regular_pay,
+        r.overtime_pay,
+        r.commission_pay,
+        r.gross_earnings,
+        r.tax_paye,
+        r.statutory_nssf,
+        r.statutory_nhif,
+        r.benefits_deduction,
+        r.shortage_deduction,
+        r.total_deductions,
+        r.net_pay
+      ].join(','));
+
+      const csvContent = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Payroll_Export_${start}_to_${end}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Payroll CSV exported successfully');
+    } else {
+      showToast('No payroll records found for this period');
+    }
+  } catch (e) {
+    console.error('[exportPayrollCSV]', e);
+    showToast('Failed to export payroll CSV');
+  }
+}
+
+// ─────────────── TERMINAL CLOCK-IN / CLOCK-OUT ───────────────
+
+let _terminalShiftState = { clocked_in: false, shift: null, hours_today: 0 };
+
+async function initTerminalClock() {
+  const widget = document.getElementById('terminal-clock-widget');
+  if (!widget) return;
+  
+  // Find current logged in user employee id
+  const user = state.user;
+  if (!user) return;
+
+  try {
+    // If user has an associated employee or we look up by user id
+    const empRes = await apiGet('/api/hr/employees');
+    const employees = (empRes && empRes.data) || [];
+    const currentEmp = employees.find(e => (e.email && e.email.toLowerCase() === (user.email || '').toLowerCase()) || e.name === user.name) || employees[0];
+    
+    if (!currentEmp) return;
+    _terminalShiftState.employee_id = currentEmp.id;
+
+    const statusRes = await apiGet(`/api/hr/shift-status?employee_id=${currentEmp.id}`);
+    if (statusRes && statusRes.success) {
+      _terminalShiftState.clocked_in = statusRes.clocked_in;
+      _terminalShiftState.shift = statusRes.shift;
+      _terminalShiftState.hours_today = statusRes.hours_today;
+      updateTerminalClockUI();
+    }
+  } catch (e) {
+    console.warn('[initTerminalClock]', e);
+  }
+}
+
+function updateTerminalClockUI() {
+  const badgeEl = document.getElementById('clock-status-badge');
+  const labelEl = document.getElementById('clock-status-label');
+  const hoursEl = document.getElementById('clock-hours-display');
+  const btnEl   = document.getElementById('clock-btn');
+
+  if (!badgeEl || !labelEl || !btnEl) return;
+
+  if (_terminalShiftState.clocked_in) {
+    badgeEl.classList.add('clocked-in');
+    const inTime = _terminalShiftState.shift?.clock_in_time || 'Active';
+    const shiftType = _terminalShiftState.shift?.shift_type || 'day';
+    labelEl.textContent = `Clocked In (${inTime} · ${shiftType})`;
+    if (hoursEl) {
+      hoursEl.style.display = 'inline-block';
+      hoursEl.textContent = `Shift Active`;
+    }
+    btnEl.className = 'btn-sm clock-out-btn';
+    btnEl.textContent = 'Clock Out';
+  } else {
+    badgeEl.classList.remove('clocked-in');
+    labelEl.textContent = 'Not Clocked In';
+    if (hoursEl) {
+      hoursEl.style.display = _terminalShiftState.hours_today > 0 ? 'inline-block' : 'none';
+      hoursEl.textContent = `${_terminalShiftState.hours_today} hrs today`;
+    }
+    btnEl.className = 'btn-sm clock-in-btn';
+    btnEl.textContent = 'Clock In';
+  }
+}
+
+async function terminalClockToggle() {
+  if (!_terminalShiftState.employee_id) {
+    await initTerminalClock();
+  }
+  const empId = _terminalShiftState.employee_id;
+  const branchId = state.currentBranch?.id === 'all' ? 1 : (state.currentBranch?.id || 1);
+
+  if (!empId) {
+    showToast('No active staff profile linked to this session');
+    return;
+  }
+
+  if (_terminalShiftState.clocked_in) {
+    // Clock out
+    if (!confirm('Are you sure you want to Clock Out from this register terminal?')) return;
+    try {
+      const res = await apiPost('/api/hr/clock-out', { employee_id: empId });
+      if (res && res.success) {
+        showToast(`Clocked Out! Regular: ${res.summary.regular_hours}h, OT: ${res.summary.overtime_hours}h. Net: KES ${res.summary.net_pay}`);
+        await initTerminalClock();
+      } else {
+        showToast(res.error || 'Failed to clock out');
+      }
+    } catch (e) {
+      showToast('Error clocking out');
+    }
+  } else {
+    // Clock in
+    try {
+      const res = await apiPost('/api/hr/clock-in', { employee_id: empId, branch_id: branchId });
+      if (res && res.success) {
+        showToast(`Clocked In! (${res.shift_type.toUpperCase()} Shift · +${res.differential_pct}% differential)`);
+        await initTerminalClock();
+      } else {
+        showToast(res.error || 'Failed to clock in');
+      }
+    } catch (e) {
+      showToast('Error clocking in');
+    }
   }
 }
 
@@ -6681,7 +6921,12 @@ const SETTINGS_MAP = {
   receipt_header:  'set-receipt-header',
   printer:         'set-printer',
   scanner:         'set-scanner',
-  cash_drawer:     'set-drawer'
+  cash_drawer:     'set-drawer',
+  payroll_ot_threshold_hours: 'set-ot-threshold',
+  payroll_ot_multiplier:      'set-ot-multiplier',
+  payroll_diff_evening_pct:    'set-diff-evening',
+  payroll_diff_night_pct:      'set-diff-night',
+  payroll_diff_weekend_pct:    'set-diff-weekend'
 };
 
 /**
@@ -6718,7 +6963,7 @@ async function loadSettings() {
   if (titleEl && subEl) {
     if (isOwner) {
       titleEl.textContent = 'System & Store Settings';
-      subEl.textContent = 'Configure enterprise profile, branches, tax and terminal hardware';
+      subEl.textContent = 'Configure enterprise profile, branches, tax, overtime rules and terminal hardware';
       if (saveBtn) saveBtn.textContent = 'Save Changes';
     } else {
       titleEl.textContent = 'Store & Terminal Settings';
@@ -6734,7 +6979,12 @@ async function loadSettings() {
     'set-hq-phone',
     'set-currency',
     'set-vat-rate',
-    'set-receipt-header'
+    'set-receipt-header',
+    'set-ot-threshold',
+    'set-ot-multiplier',
+    'set-diff-evening',
+    'set-diff-night',
+    'set-diff-weekend'
   ];
 
   enterpriseFields.forEach(id => {
@@ -7232,7 +7482,20 @@ function initLogisticsMap() {
   // Destroy existing map if re-navigating
   if (_logisticsMap) { _logisticsMap.remove(); _logisticsMap = null; _mapMarkers = []; }
 
-  // Nairobi centre
+  // Resolve active branch context
+  const activeBranch = state.currentBranch;
+  const isAllBranches = !activeBranch || activeBranch.id === 'all';
+  const branchName = isAllBranches ? 'All Branches' : (activeBranch.name || `Branch ${activeBranch.id}`);
+
+  // Update map subtitle dynamically
+  const subtitleEl = document.getElementById('logistics-map-subtitle');
+  if (subtitleEl) {
+    subtitleEl.textContent = isAllBranches
+      ? 'Enterprise View — all branch vehicles'
+      : `${branchName} — active deliveries`;
+  }
+
+  // Centre on Nairobi
   _logisticsMap = L.map('logistics-map', { zoomControl: true, scrollWheelZoom: false }).setView([-1.2921, 36.8219], 12);
 
   // OpenStreetMap tiles (no API key needed)
@@ -7241,7 +7504,7 @@ function initLogisticsMap() {
     maxZoom: 18
   }).addTo(_logisticsMap);
 
-  // 1. Plot Main Warehouse / HQ Marker
+  // 1. Plot Branch Dispatch Hub marker
   const hqIcon = L.divIcon({
     className: '',
     html: `<div style="
@@ -7260,20 +7523,30 @@ function initLogisticsMap() {
     popupAnchor: [0, -20]
   });
 
+  const hubLabel = isAllBranches
+    ? '<strong>Main Warehouse / HQ</strong><br>Central Dispatch — All Branches'
+    : `<strong>${branchName} Dispatch Hub</strong><br>Branch Warehouse &amp; Dispatch Facility`;
+
   L.marker([-1.2921, 36.8219], { icon: hqIcon })
-    .bindPopup('<strong>Main Warehouse / HQ</strong><br>Central Dispatch Facility')
+    .bindPopup(hubLabel)
     .addTo(_logisticsMap);
 
-  // 2. Plot real active deliveries from _delCache
-  const activeDeliveries = (_delCache || []).filter(d => ['in_transit', 'delayed', 'pending'].includes(d.status));
+  // 2. Filter delivery pins to active branch only (all if owner viewing all branches)
+  const branchId = activeBranch?.id;
+  const activeDeliveries = (_delCache || []).filter(d => {
+    if (!['in_transit', 'delayed', 'pending'].includes(d.status)) return false;
+    if (isAllBranches) return true;
+    return String(d.branch_id) === String(branchId);
+  });
 
+  // 3. Plot each filtered delivery as a vehicle pin
   activeDeliveries.forEach((d, idx) => {
-    // Generate map coordinates relative to HQ if exact lat/lng is missing
     const lat = d.lat || (-1.2921 + (((d.id || idx + 1) * 19) % 40 - 20) * 0.0035);
     const lng = d.lng || (36.8219 + (((d.id || idx + 1) * 29) % 40 - 20) * 0.0035);
 
     const statusColor = d.status === 'in_transit' ? '#10B981' : d.status === 'delayed' ? '#EF4444' : '#F59E0B';
     const statusLabel = d.status === 'in_transit' ? 'In Transit' : d.status === 'delayed' ? 'Delayed' : 'Pending';
+    const branchTag  = d.branch_name ? `<br><b>Branch:</b> ${d.branch_name}` : '';
 
     const vanIcon = L.divIcon({
       className: '',
@@ -7301,12 +7574,27 @@ function initLogisticsMap() {
         <strong>${d.ref || 'Delivery #' + d.id}</strong><br>
         <b>Driver:</b> ${d.driver_name || 'Unassigned'} (${d.van_number || 'Vehicle'})<br>
         <b>Destination:</b> ${d.destination || 'N/A'}<br>
-        <b>Status:</b> <span style="color:${statusColor};font-weight:600;">${statusLabel}</span>
+        <b>Status:</b> <span style="color:${statusColor};font-weight:600;">${statusLabel}</span>${branchTag}
       `)
       .addTo(_logisticsMap);
 
     _mapMarkers.push({ marker, id: d.id, status: d.status });
   });
+
+  // 4. Empty-state notice if no active deliveries for this branch
+  if (!activeDeliveries.length) {
+    const notice = L.divIcon({
+      className: '',
+      html: `<div style="
+        background:white;border-radius:8px;padding:10px 14px;
+        box-shadow:0 2px 8px rgba(0,0,0,0.2);font-size:12px;
+        color:#555;white-space:nowrap;
+      ">No active deliveries for ${branchName}</div>`,
+      iconSize: [240, 36],
+      iconAnchor: [120, 18]
+    });
+    L.marker([-1.2921, 36.8219], { icon: notice }).addTo(_logisticsMap);
+  }
 
   // Ensure Leaflet recalculates tile container dimensions after tab transition
   setTimeout(() => {
@@ -7317,8 +7605,11 @@ function initLogisticsMap() {
 
 function openDeliveryModal() {
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  const branchOrigin = state.currentBranch?.name
+    ? `${state.currentBranch.name} Warehouse`
+    : 'Main Warehouse';
   setVal('del-customer', ''); setVal('del-driver', ''); setVal('del-van', '');
-  setVal('del-origin', 'Main Warehouse'); setVal('del-destination', '');
+  setVal('del-origin', branchOrigin); setVal('del-destination', '');
   setVal('del-eta', '30 min'); setVal('del-notes', '');
   document.getElementById('delivery-modal')?.classList.remove('hidden');
 }
@@ -7331,11 +7622,13 @@ async function submitDeliveryModal() {
   const destination   = document.getElementById('del-destination')?.value.trim();
   const eta           = document.getElementById('del-eta')?.value.trim() || '30 min';
   const notes         = document.getElementById('del-notes')?.value.trim();
+  const branch_id     = state.currentBranch?.id && state.currentBranch.id !== 'all'
+    ? state.currentBranch.id : null;
 
   if (!destination) { showToast('Destination is required'); return; }
 
   try {
-    const res = await apiPost('/api/logistics/deliveries', { customer_name, driver_name, van_number, origin, destination, eta, notes });
+    const res = await apiPost('/api/logistics/deliveries', { customer_name, driver_name, van_number, origin, destination, eta, notes, branch_id });
     if (res.success) {
       showToast(`Delivery ${res.ref} dispatched!`);
       closeModal('delivery-modal');
@@ -7345,6 +7638,7 @@ async function submitDeliveryModal() {
     }
   } catch(e) { showToast('Error dispatching delivery'); }
 }
+
 
 async function updateDeliveryStatus(id, status) {
   const labels = { in_transit: 'dispatch', delivered: 'mark as delivered', delayed: 'flag as delayed' };
