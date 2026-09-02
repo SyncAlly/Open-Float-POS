@@ -6,28 +6,37 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
-
 const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Ensure upload media directory exists
 const UPLOADS_DIR = path.resolve(__dirname, '../uploads/products');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-// Core Middleware
-const allowedOrigins = [
+app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: false
+}));
+
+const defaultAllowedOrigins = [
   'http://localhost:5000',
   'http://localhost:3000',
   'http://127.0.0.1:5000',
-  // Add your production domain here when deploying:
-  // 'https://your-production-domain.com'
+  'http://localhost'
 ];
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = [...new Set([...configuredOrigins, ...defaultAllowedOrigins])];
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. Postman, mobile apps on same machine)
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`CORS policy: origin ${origin} not allowed`));
   },
@@ -36,13 +45,29 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve uploaded product images
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Restrict access to sensitive backend files, dotfiles, database files, and config files
+app.use((req, res, next) => {
+  const reqPath = req.path.toLowerCase();
+  if (
+    reqPath.startsWith('/backend') ||
+    reqPath.startsWith('/attachment') ||
+    reqPath.startsWith('/.') ||
+    reqPath === '/package.json' ||
+    reqPath === '/package-lock.json' ||
+    reqPath === '/agent_changelog.md' ||
+    reqPath.endsWith('.sqlite') ||
+    reqPath.endsWith('.sqlite3') ||
+    reqPath.endsWith('.db') ||
+    reqPath.endsWith('.env')
+  ) {
+    return res.status(403).json({ error: 'Access forbidden.' });
+  }
+  next();
+});
 
-// Serve frontend static files directly from root directory
-app.use(express.static(path.join(__dirname, '../')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), { dotfiles: 'ignore' }));
+app.use(express.static(path.join(__dirname, '../'), { dotfiles: 'ignore' }));
 
-// Health Check Endpoint
 app.get('/api/health', (req, res) => {
   const hasGeminiKey = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY_HERE';
   res.json({
@@ -56,7 +81,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// API Routes (Simplest -> Most Complex)
 app.use('/api/settings',        require('./routes/settings'));
 app.use('/api/branches',        require('./routes/branches'));
 app.use('/api/inventory',       require('./routes/inventory'));
@@ -77,8 +101,6 @@ app.use('/api/upload',          require('./routes/upload'));
 app.use('/api/ai',              require('./routes/ai'));
 app.use('/api/mpesa',           require('./routes/mpesa'));
 
-// ─── Global Error Handler (Fix 7: hide internals in production) ────────────────
-// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   const isDev = process.env.NODE_ENV === 'development';
   const status = err.status || 500;
@@ -88,13 +110,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start Server
 if (require.main === module) {
-  // Graceful exit
   process.on('SIGINT', () => {
     console.log('\n[OpenFloat] Server stopped.');
     process.exit(0);
   });
+
+  if (isProduction && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'openfloat_secret' || process.env.JWT_SECRET === 'YOUR_JWT_SECRET_HERE')) {
+    console.error('[Security] JWT_SECRET is required in production. Set it in your environment before starting the server.');
+    process.exit(1);
+  }
+
   app.listen(PORT, () => {
     console.log(`[OpenFloat POS X] Server running on http://localhost:${PORT}`);
   });

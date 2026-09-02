@@ -4056,7 +4056,7 @@ function renderSaleHistory(txns) {
   }
   const methodBadge = { cash:'badge-green', mpesa:'badge-blue', card:'badge-purple', credit:'badge-amber' };
   tbody.innerHTML = txns.map(t => {
-    const dt = t.created_at ? new Date(t.created_at).toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '-';
+    const dt = t.created_at ? formatReceiptDate(t.created_at) : '-';
     const method = (t.payment_method || 'cash').toLowerCase();
     const badgeCls = methodBadge[method] || 'badge-green';
     const transactionRef = t.ref || t.ref_no || `TXN-${t.id}`;
@@ -4112,7 +4112,7 @@ async function viewTxnDetail(txId) {
   }
 
   _activeTxnDetail = txn;
-  const dt = txn.created_at ? new Date(txn.created_at).toLocaleString('en-KE') : new Date().toLocaleString('en-KE');
+  const dt = formatReceiptDate(txn.created_at);
   const ref = txn.ref || txn.ref_no || `TXN-${txn.id}`;
   const items = txn.items && txn.items.length ? txn.items : [
     { product_name: 'Product Items', qty: 1, unit_price: txn.subtotal || txn.total, line_total: txn.subtotal || txn.total }
@@ -4164,7 +4164,7 @@ function printCurrentTxnReceipt() {
   }
   const txn = _activeTxnDetail;
   const ref = txn.ref || txn.ref_no || `TXN-${txn.id}`;
-  const dt = txn.created_at ? new Date(txn.created_at).toLocaleString('en-KE') : new Date().toLocaleString('en-KE');
+  const dt = formatReceiptDate(txn.created_at);
   const items = txn.items && txn.items.length ? txn.items : [
     { product_name: 'Product Order', qty: 1, unit_price: txn.total, line_total: txn.total }
   ];
@@ -4567,6 +4567,21 @@ let _lastReceiptData = null;
 async function processPayment() {
   if (state.cart.length === 0) { showToast('Cart is empty'); return; }
 
+  // Enforce Time & Attendance: Must be clocked in to ring up sales
+  if (!_terminalShiftState.clocked_in) {
+    showToast('Register terminal locked. You must Clock In before processing sales transactions.');
+    const clockBtn = document.getElementById('clock-btn');
+    if (clockBtn) {
+      clockBtn.classList.add('pulse');
+      clockBtn.focus();
+      setTimeout(() => clockBtn.classList.remove('pulse'), 2000);
+    }
+    return;
+  }
+
+  // Stamp the exact moment of sale BEFORE any async operation
+  const txTime = new Date();
+
   const { subtotal, discount, vatRate, vat, grandTotal } = getCartTotals();
   const custSelect = document.getElementById('cart-customer');
   const custId = custSelect && custSelect.value ? parseInt(custSelect.value) : null;
@@ -4608,18 +4623,20 @@ async function processPayment() {
     });
 
     const data = await res.json();
-    if (res.ok && data.success) {
-      txRef = data.ref || txRef;
-      showToast(`Sale completed! Ref: ${txRef}`);
-    } else {
-      showToast(`Sale recorded: ${txRef}`);
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Checkout failed. Ensure you are clocked in.');
+      return; // Do NOT clear cart or print receipt on error
     }
+
+    txRef = data.ref || txRef;
+    showToast(`Sale completed! Ref: ${txRef}`);
   } catch (err) {
-    showToast(`Payment recorded: ${txRef}`);
+    showToast('Payment processing error. Please try again.');
+    return;
   }
 
-  // 1. Show receipt modal immediately using order snapshot
-  previewReceipt(txRef, custName, subtotal, vat, grandTotal, cartItemsSnapshot, payMethod, changeAmt, discount);
+  // 1. Show receipt modal immediately using the exact sale timestamp
+  previewReceipt(txRef, custName, subtotal, vat, grandTotal, cartItemsSnapshot, payMethod, changeAmt, discount, txTime);
 
   // 2. Clear cart & reset tendered inputs for next sale
   state.cart = [];
@@ -4636,10 +4653,37 @@ async function processPayment() {
   loadDashboardKPIs();
 }
 
-function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, changeAmt, discount) {
+function formatReceiptDate(dateVal) {
+  if (!dateVal) return new Date().toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: true });
+  let d;
+  if (dateVal instanceof Date) {
+    d = dateVal;
+  } else if (typeof dateVal === 'string') {
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateVal)) {
+      d = new Date(dateVal.replace(' ', 'T') + 'Z');
+    } else {
+      d = new Date(dateVal);
+    }
+  } else {
+    d = new Date(dateVal);
+  }
+  if (isNaN(d.getTime())) d = new Date();
+  return d.toLocaleString('en-KE', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+}
+
+function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, changeAmt, discount, txTime) {
   const { subtotal: cSub, discount: cDisc, vat: cVat, grandTotal: cTot } = getCartTotals();
   const vatRate = getVatRate();
   const discAmt = discount !== undefined ? discount : cDisc;
+  const receiptTimestamp = formatReceiptDate(txTime || new Date());
 
   if (items && items.length > 0) {
     _lastReceiptData = {
@@ -4654,7 +4698,7 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
       payMethod: payMethod || state.selectedPayMethod || 'cash',
       changeAmt: changeAmt || 0,
       cashierName: state.user ? state.user.name : 'Owner',
-      dateStr: new Date().toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      dateStr: receiptTimestamp
     };
   } else if (state.cart.length > 0) {
     const custSelect = document.getElementById('cart-customer');
@@ -4673,7 +4717,7 @@ function previewReceipt(ref, customerName, sub, vat, total, items, payMethod, ch
       payMethod: state.selectedPayMethod || 'cash',
       changeAmt: Math.max(0, tendered - cTot),
       cashierName: state.user ? state.user.name : 'Owner',
-      dateStr: new Date().toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      dateStr: receiptTimestamp
     };
   }
 

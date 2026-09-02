@@ -34,7 +34,7 @@ function normalizeImageUrl(url) {
 }
 
 /**
- * Map common MIME types to file extensions.
+ * Map common MIME types to file extensions (SVG disallowed to prevent stored XSS).
  */
 function getExtensionFromMime(mime) {
   if (!mime) return '.jpg';
@@ -43,11 +43,49 @@ function getExtensionFromMime(mime) {
     case 'image/png':  return '.png';
     case 'image/webp': return '.webp';
     case 'image/gif':  return '.gif';
-    case 'image/svg+xml': return '.svg';
     case 'image/jpeg':
     case 'image/jpg':
-    default:
       return '.jpg';
+    default:
+      return cleanMime === 'image/svg+xml' ? null : '.jpg';
+  }
+}
+
+/**
+ * SSRF Guard: Validate that target remote image URL does not target localhost, private IPs, or cloud metadata.
+ */
+function isSafeRemoteUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const hostname = parsed.hostname.toLowerCase();
+
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '169.254.169.254' ||
+      hostname.endsWith('.internal') ||
+      hostname.endsWith('.local')
+    ) {
+      return false;
+    }
+
+    const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipMatch) {
+      const p1 = parseInt(ipMatch[1]);
+      const p2 = parseInt(ipMatch[2]);
+      if (p1 === 10) return false;
+      if (p1 === 127) return false;
+      if (p1 === 169 && p2 === 254) return false;
+      if (p1 === 172 && p2 >= 16 && p2 <= 31) return false;
+      if (p1 === 192 && p2 === 168) return false;
+      if (p1 === 0) return false;
+    }
+    return true;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -111,12 +149,21 @@ async function downloadAndSaveImage(rawUrl, sku = 'prod', maxRetries = 3) {
         const mimeMatch = parts[0].match(/data:(image\/[a-zA-Z0-9+-]+);base64/);
         const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
         const ext = getExtensionFromMime(mime);
-        
+        if (!ext) {
+          console.warn(`[ImageDownloader] Disallowed image type for SKU ${sku}`);
+          return null;
+        }
+
+        const buffer = Buffer.from(parts[1], 'base64');
+        if (buffer.length > 10 * 1024 * 1024) {
+          console.warn(`[ImageDownloader] Base64 image exceeds 10MB limit for SKU ${sku}`);
+          return null;
+        }
+
         removeExistingSkuImages(cleanSku);
         const filename = `${cleanSku}${ext}`;
         const filePath = path.join(UPLOADS_DIR, filename);
 
-        const buffer = Buffer.from(parts[1], 'base64');
         fs.writeFileSync(filePath, buffer);
         return `/uploads/products/${filename}`;
       }
@@ -132,6 +179,12 @@ async function downloadAndSaveImage(rawUrl, sku = 'prod', maxRetries = 3) {
     return null;
   }
 
+  // SSRF Protection: ensure remote destination is not private/local
+  if (!isSafeRemoteUrl(targetUrl)) {
+    console.warn(`[ImageDownloader] Blocked potentially unsafe or internal URL for SKU ${sku}: ${targetUrl}`);
+    return null;
+  }
+
   // 4. Download remote image with exponential backoff retries
   let attempt = 0;
   let delay = 1000; // start with 1 second
@@ -142,7 +195,7 @@ async function downloadAndSaveImage(rawUrl, sku = 'prod', maxRetries = 3) {
       const response = await fetch(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+          'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
         },
         signal: AbortSignal.timeout(12000) // 12-second timeout per attempt
       });
@@ -163,16 +216,21 @@ async function downloadAndSaveImage(rawUrl, sku = 'prod', maxRetries = 3) {
       }
 
       const contentType = response.headers.get('content-type') || 'image/jpeg';
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      // Verify we actually received image bytes
-      if (buffer.length === 0) {
-        console.warn(`[ImageDownloader] Empty image received for SKU ${sku}`);
+      const ext = getExtensionFromMime(contentType);
+      if (!ext) {
+        console.warn(`[ImageDownloader] Disallowed or dangerous MIME type (${contentType}) for SKU ${sku}`);
         return null;
       }
 
-      const ext = getExtensionFromMime(contentType);
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Verify we actually received image bytes and within 10MB limit
+      if (buffer.length === 0 || buffer.length > 10 * 1024 * 1024) {
+        console.warn(`[ImageDownloader] Invalid image size (${buffer.length} bytes) for SKU ${sku}`);
+        return null;
+      }
+
       removeExistingSkuImages(cleanSku);
       const filename = `${cleanSku}${ext}`;
       const filePath = path.join(UPLOADS_DIR, filename);

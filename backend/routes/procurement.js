@@ -14,8 +14,8 @@ router.get('/requests', requireAuth, ctrl.getPurchaseRequests);
 // POST /api/procurement/requests          — submit new purchase request
 router.post('/requests', requireAuth, ctrl.createPurchaseRequest);
 
-// PATCH /api/procurement/requests/:id/status — approve/reject/deliver PR
-router.patch('/requests/:id/status', requireAuth, ctrl.updatePRStatus);
+// PATCH /api/procurement/requests/:id/status — approve/reject/deliver PR (owner/manager only)
+router.patch('/requests/:id/status', requireAuth, requireRole('owner', 'manager'), ctrl.updatePRStatus);
 
 // DELETE /api/procurement/requests/:id — delete PR
 router.delete('/requests/:id', requireAuth, requireRole('owner', 'manager'), ctrl.deletePurchaseRequest);

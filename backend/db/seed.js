@@ -48,7 +48,7 @@ async function seed() {
   console.log('[Seed] Branches seeded.');
 
   // ── USERS ─────────────────────────────────────────────────────────────────────
-  const passwordHash = bcrypt.hashSync('admin123', 10);
+  const passwordHash = bcrypt.hashSync(process.env.INITIAL_ADMIN_PASSWORD || 'OpenFloat!2026', 10);
   const users = [
     ['Owner', 'owner@openfloat.com', passwordHash, 'owner', 1]
   ];

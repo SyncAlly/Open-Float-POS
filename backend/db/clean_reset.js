@@ -77,7 +77,7 @@ async function resetForNewClient() {
     exec(db, `DELETE FROM users;`);
     exec(db, `DELETE FROM sqlite_sequence WHERE name='users';`);
 
-    const defaultPassword = process.env.INITIAL_ADMIN_PASSWORD || 'admin123';
+    const defaultPassword = process.env.INITIAL_ADMIN_PASSWORD || 'OpenFloat!2026';
     const passwordHash = bcrypt.hashSync(defaultPassword, 10);
 
     exec(db, `

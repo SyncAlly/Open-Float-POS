@@ -2,18 +2,21 @@
 
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
 const ctrl = require('../controllers/accountingController');
 
-// GET  /api/accounting/overview      — Financial KPI summary
-router.get('/overview', requireAuth, ctrl.getFinancialOverview);
+const managerUp = requireRole('owner', 'manager');
 
-// GET  /api/accounting/ledgers       — Accounts Receivable & Payable
-router.get('/ledgers', requireAuth, ctrl.getARAPLedgers);
+// GET  /api/accounting/overview      — Financial KPI summary (owner/manager only)
+router.get('/overview', requireAuth, managerUp, ctrl.getFinancialOverview);
 
-// GET  /api/accounting/entries       — List journal entries
-router.get('/entries', requireAuth, ctrl.getJournalEntries);
+// GET  /api/accounting/ledgers       — Accounts Receivable & Payable (owner/manager only)
+router.get('/ledgers', requireAuth, managerUp, ctrl.getARAPLedgers);
 
-// POST /api/accounting/entries       — Create manual journal entry
-router.post('/entries', requireAuth, ctrl.createJournalEntry);
+// GET  /api/accounting/entries       — List journal entries (owner/manager only)
+router.get('/entries', requireAuth, managerUp, ctrl.getJournalEntries);
+
+// POST /api/accounting/entries       — Create manual journal entry (owner/manager only)
+router.post('/entries', requireAuth, managerUp, ctrl.createJournalEntry);
 
 module.exports = router;

@@ -2,6 +2,7 @@
 
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
 const ctrl = require('../controllers/mpesaController');
 
 // POST /api/mpesa/stk-push          — Initiate STK Push prompt to customer
@@ -16,7 +17,7 @@ router.get('/status/:checkout_request_id', requireAuth, ctrl.queryPaymentStatus)
 // GET  /api/mpesa/query/:checkout_request_id    — Query status from Safaricom directly
 router.get('/query/:checkout_request_id', requireAuth, ctrl.querySTKStatus);
 
-// GET  /api/mpesa/payments           — List all M-Pesa payment records
-router.get('/payments', requireAuth, ctrl.listMpesaPayments);
+// GET  /api/mpesa/payments           — List all M-Pesa payment records (owner/manager only)
+router.get('/payments', requireAuth, requireRole('owner', 'manager'), ctrl.listMpesaPayments);
 
 module.exports = router;

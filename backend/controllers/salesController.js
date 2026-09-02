@@ -12,6 +12,27 @@ async function processCheckout(req, res) {
       return res.status(400).json({ error: 'Order must contain at least one item.' });
     }
 
+    // Enforce Time & Attendance: Cashier/staff must be clocked in to process sales
+    if (req.user) {
+      const empRows = query(db,
+        'SELECT id FROM employees WHERE (LOWER(email) = LOWER(?) OR name = ?) AND status != "terminated"',
+        [req.user.email || '', req.user.name || '']
+      );
+      const empId = empRows.length ? empRows[0].id : null;
+      if (empId) {
+        const openShift = query(db,
+          'SELECT id FROM time_entries WHERE employee_id = ? AND status = "open"',
+          [empId]
+        );
+        if (!openShift.length) {
+          return res.status(403).json({
+            error: 'Register terminal locked. You must Clock In before processing sales transactions.',
+            clock_required: true
+          });
+        }
+      }
+    }
+
     // Generate unique transaction reference (e.g. TXN-20260722-X9A2)
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const randSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -60,13 +81,14 @@ async function processCheckout(req, res) {
     const rate = vat_rate !== undefined ? vat_rate : 16;
     const vat = Math.round((subtotal - appliedDiscount) * (rate / 100) * 100) / 100;
     const total = Math.max(0, subtotal - appliedDiscount + vat);
+    const createdAt = new Date().toISOString();
 
-    // Insert Main Transaction Record
+    // Insert Main Transaction Record with explicit UTC ISO timestamp
     const txResult = exec(db,
-      `INSERT INTO transactions (ref, customer_id, cashier_id, branch_id, subtotal, discount, vat, total, payment_method, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)`,
+      `INSERT INTO transactions (ref, customer_id, cashier_id, branch_id, subtotal, discount, vat, total, payment_method, status, notes, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`,
       [ref, customer_id || null, req.user ? req.user.id : null, finalBranchId,
-       subtotal, appliedDiscount, vat, total, payment_method || 'cash', notes || null]
+       subtotal, appliedDiscount, vat, total, payment_method || 'cash', notes || null, createdAt]
     );
 
     const transactionId = txResult.lastInsertRowid;

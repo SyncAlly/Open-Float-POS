@@ -1,11 +1,16 @@
-/** MODULE 3: Auth Controller — Login, Logout, Me, Register */
-
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { getDb, query, exec } = require('../db/database');
+const { getJwtSecret, isStrongPassword, passwordPolicyError } = require('../utils/security');
 
-const JWT_SECRET  = process.env.JWT_SECRET || 'openfloat_secret';
-const JWT_EXPIRES = '8h'; // Shift-length sessions
+const JWT_EXPIRES = '8h';
+
+function validatePassword(password) {
+  if (!isStrongPassword(password)) {
+    return { valid: false, error: passwordPolicyError() };
+  }
+  return { valid: true };
+}
 
 async function login(req, res) {
   try {
@@ -14,7 +19,6 @@ async function login(req, res) {
 
     const db = await getDb();
 
-    // Auto-sync branch_id from employees record if HR updated employee's branch
     try {
       exec(db, `
         UPDATE users 
@@ -36,7 +40,6 @@ async function login(req, res) {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials.' });
 
-    // Block non-owner staff from logging into a deleted or deactivated branch
     if (user.role !== 'owner') {
       if (user.branch_id && (user.branch_is_active === 0 || user.branch_is_active === null)) {
         return res.status(403).json({
@@ -45,7 +48,7 @@ async function login(req, res) {
       }
     }
 
-    const secret = process.env.JWT_SECRET || 'openfloat_secret';
+    const secret = getJwtSecret();
     const token = jwt.sign(
       { id: user.id, name: user.name, email: user.email, role: user.role, branch_id: user.branch_id },
       secret,
@@ -91,8 +94,10 @@ async function changePassword(req, res) {
     if (!current_password || !new_password) {
       return res.status(400).json({ error: 'current_password and new_password required.' });
     }
-    if (new_password.length < 6) {
-      return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+
+    const passwordValidation = validatePassword(new_password);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ error: passwordValidation.error });
     }
 
     const db = await getDb();
@@ -112,13 +117,22 @@ async function changePassword(req, res) {
 }
 
 async function register(req, res) {
-  // Only owner, manager, or HR can create new user accounts
   if (req.user.role !== 'owner' && req.user.role !== 'manager' && req.user.role !== 'hr') {
     return res.status(403).json({ error: 'Only owners, managers, or HR officers can register new users.' });
   }
   try {
     const { name, email, password, role, branch_id } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required.' });
+
+    // Prevent privilege escalation: only the owner can register another owner
+    if (role === 'owner' && req.user.role !== 'owner') {
+      return res.status(403).json({ error: 'Access denied. Only the Business Owner can register an owner account.' });
+    }
+
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ error: passwordValidation.error });
+    }
 
     const hash = await bcrypt.hash(password, 10);
     const db = await getDb();
@@ -134,7 +148,6 @@ async function register(req, res) {
 }
 
 async function upsertUserAccount(req, res) {
-  // Only owner, manager, or HR can manage user accounts
   if (req.user.role !== 'owner' && req.user.role !== 'manager' && req.user.role !== 'hr') {
     return res.status(403).json({ error: 'Only owners, managers, or HR officers can manage user accounts.' });
   }
@@ -142,18 +155,31 @@ async function upsertUserAccount(req, res) {
     const { name, email, password, role, branch_id } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required.' });
 
+    // Prevent privilege escalation: only owner can grant owner role
+    if (role === 'owner' && req.user.role !== 'owner') {
+      return res.status(403).json({ error: 'Access denied. Only the Business Owner can grant owner role privileges.' });
+    }
+
     const db = await getDb();
-    const existing = query(db, 'SELECT id, password_hash FROM users WHERE LOWER(email) = ?', [email.toLowerCase()]);
+    const existing = query(db, 'SELECT id, password_hash, role FROM users WHERE LOWER(email) = ?', [email.toLowerCase()]);
 
     if (existing.length) {
-      // Update existing user login account
+      // Prevent non-owners from modifying existing owner accounts
+      if (existing[0].role === 'owner' && req.user.role !== 'owner') {
+        return res.status(403).json({ error: 'Access denied. Only the Business Owner can modify an owner account.' });
+      }
+
       const updates = [];
       const params = [];
 
       if (name) { updates.push('name = ?'); params.push(name); }
       if (role) { updates.push('role = ?'); params.push(role); }
       if (branch_id !== undefined) { updates.push('branch_id = ?'); params.push(branch_id); }
-      if (password && password.trim().length >= 6) {
+      if (password) {
+        const passwordValidation = validatePassword(password.trim());
+        if (!passwordValidation.valid) {
+          return res.status(400).json({ error: passwordValidation.error });
+        }
         const hash = await bcrypt.hash(password.trim(), 10);
         updates.push('password_hash = ?');
         params.push(hash);
@@ -164,18 +190,23 @@ async function upsertUserAccount(req, res) {
         exec(db, `UPDATE users SET ${updates.join(', ')} WHERE LOWER(email) = ?`, params);
       }
       return res.json({ success: true, message: 'User login account updated.', action: 'updated' });
-    } else {
-      // Create new user login account
-      if (!password || password.trim().length < 6) {
-        return res.status(400).json({ error: 'Initial password (min. 6 characters) required to create login account.' });
-      }
-      const hash = await bcrypt.hash(password.trim(), 10);
-      const result = exec(db,
-        'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
-        [name || 'Employee', email.toLowerCase(), hash, role || 'cashier', branch_id || null]);
-
-      return res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'User login account created.', action: 'created' });
     }
+
+    if (!password) {
+      return res.status(400).json({ error: 'Initial password required to create login account.' });
+    }
+
+    const passwordValidation = validatePassword(password.trim());
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ error: passwordValidation.error });
+    }
+
+    const hash = await bcrypt.hash(password.trim(), 10);
+    const result = exec(db,
+      'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
+      [name || 'Employee', email.toLowerCase(), hash, role || 'cashier', branch_id || null]);
+
+    return res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'User login account created.', action: 'created' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

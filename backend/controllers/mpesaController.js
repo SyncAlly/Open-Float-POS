@@ -15,9 +15,13 @@ const DARAJA_BASE = process.env.MPESA_ENV === 'production'
 
 const CONSUMER_KEY    = process.env.MPESA_CONSUMER_KEY    || '';
 const CONSUMER_SECRET = process.env.MPESA_CONSUMER_SECRET || '';
-const SHORTCODE       = process.env.MPESA_SHORTCODE       || '174379';        // Sandbox default
-const PASSKEY         = process.env.MPESA_PASSKEY         || 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919'; // Sandbox default
+const SHORTCODE       = process.env.MPESA_SHORTCODE       || '174379';
+const PASSKEY         = process.env.MPESA_PASSKEY         || '';
 const CALLBACK_URL    = process.env.MPESA_CALLBACK_URL    || 'https://yourdomain.com/api/mpesa/callback';
+
+if (process.env.NODE_ENV === 'production' && (!CONSUMER_KEY || !CONSUMER_SECRET || !SHORTCODE || !PASSKEY)) {
+  throw new Error('M-Pesa credentials must be configured in production via environment variables.');
+}
 
 // In-memory pending payments: checkoutRequestId -> {resolve, reject, data}
 const _pendingPayments = new Map();
