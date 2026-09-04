@@ -78,3 +78,39 @@ Use the format below for all future entries:
 - Files affected: backend/server.js, backend/controllers/settingsController.js, backend/controllers/authController.js, backend/utils/imageDownloader.js, backend/routes/accounting.js, backend/routes/procurement.js, backend/routes/mpesa.js, backend/routes/suppliers.js, backend/routes/services.js, backend/routes/stockMovements.js, backend/routes/zReports.js, backend/routes/upload.js
 - Validation: Ran node sanity and compilation checks across all modified backend controllers and routers; confirmed clean server startup and RBAC enforcement.
 - Risk / Notes: Non-owner roles attempting to access administrative endpoints or view payment secrets will now receive standard 403 Forbidden responses.
+
+### September 2026 - HQ HR Management Enhancements
+- **HR Overview Modification:** Modified the getEmployees backend controller to dynamically UNION owner accounts from the users table into the returned list when requested by an owner.
+- **Owner Password Management UI:** Updated the HR table rendering in pp.js to detect owner accounts (is_owner_user = 1) and replace the 'Edit'/'Pay Stub'/'Delete' buttons with a dedicated 'Change Password' button. This allows the business owner to change system owner credentials directly from the HR overview without needing an underlying employees table record.
+
+- **Employee & Owner Credential Editing:** Updated the Employee Modal to pre-fill the Login Email and display dummy asterisks ('********') in the Password field if the employee already has login credentials. This replaces the confusing blank space. Reverted the owner HR row to use the standard 'Edit' button (allowing owners to be edited via the same Employee Modal). Handled owner ID interception in hrController.js to update the users table directly without requiring an employees table record.
+
+
+### 2026-09-04 | Dynamic Role & Permissions Builder in Enterprise HQ Overview
+- Scope: Custom roles management, fine-grained view access control, backend RBAC resolution, and staff role assignment
+- Summary:
+  - Added `custom_roles` table schema and migration in `backend/db/database.js` with seeded system defaults (Manager, Cashier, HR Officer, Accountant).
+  - Created `backend/controllers/rolesController.js` and `backend/routes/roles.js` with full CRUD operations protected by Owner-only authorization. System roles are protected against modification or deletion.
+  - Updated `backend/middleware/rbac.js` with asynchronous role resolution: custom roles map to a backend trust level (`base_role`) ensuring zero API security bypass.
+  - Added 'Roles & Access' tab to the Enterprise HQ Overview (`view-branch-comparison`) in `index.html`.
+  - Designed interactive role cards grid displaying trust levels, active module access badges, and management actions (Edit/Delete for custom roles, Protected for core roles).
+  - Added Role Create/Edit modal with customizable module access checkboxes (Sales, Services, CRM, HP, Inventory, Stock Movements, Procurement, Logistics, Accounting, Receivables, Suppliers, Z-Reports, HR, AI).
+  - Updated `applyRolePermissions()` in `js/app.js` to dynamically filter sidebar navigation items according to the assigned custom role's permissions.
+  - Updated `openEmployeeModal()` to dynamically populate the System Role dropdown with all active custom roles alongside system defaults.
+- Files affected: backend/db/database.js, backend/controllers/rolesController.js, backend/routes/roles.js, backend/server.js, backend/middleware/rbac.js, index.html, js/app.js
+- Validation: Verified compilation and syntax for all files; tested GET, POST, PUT, DELETE /api/roles endpoints, confirmed 403 enforcement on system roles, and verified clean server operation.
+
+
+- **Walkthrough Archival Policy:** Created System walkthroughs/ directory in the project root to permanently archive feature walkthroughs. Saved the Dynamic Role & Permissions Builder walkthrough to System walkthroughs/dynamic_role_and_permissions_builder.md and System walkthroughs/walkthrough.md. All future walkthroughs will be stored here.
+
+
+### 2026-09-04 | Dedicated Roles & Access Page under Enterprise HQ
+- Scope: Navigation hierarchy, standalone view isolation, and HQ workspace organization
+- Summary:
+  - Extracted the Roles & Access feature out of the Multi-Branch Performance Comparison tab bar and promoted it into its own standalone view (`view-roles`) under the Enterprise HQ sidebar section.
+  - Added a dedicated sidebar navigation item `nav-roles` featuring a shield access icon and `HQ` badge.
+  - Added 4 high-level KPI cards to the Roles & Access page (Total Roles, Custom Roles, Core Protected Roles, Security Protocol).
+  - Restored Multi-Branch Performance Comparison (`view-branch-comparison`) to its 4 core operational analytics tabs (Sales & Revenue, Staff & Productivity, Inventory & Stock, Payment Channels).
+  - Archived full technical walkthrough to `System walkthroughs/18_roles_and_access_dedicated_enterprise_hq_page.md` and refreshed `INDEX.md`.
+- Files affected: index.html, js/app.js, AGENT_CHANGELOG.md, System walkthroughs/18_roles_and_access_dedicated_enterprise_hq_page.md, System walkthroughs/INDEX.md
+

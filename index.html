@@ -108,6 +108,11 @@
           <span>Branch Comparison</span>
           <span class="nav-badge" style="background:var(--brand);color:#fff;">HQ</span>
         </a>
+        <a class="nav-item" data-view="roles" id="nav-roles">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M10 2l6 3v5c0 4.5-2.8 8.4-6 9.5-3.2-1.1-6-5-6-9.5V5l6-3z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 7v4m0 3h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span>Roles &amp; Access</span>
+          <span class="nav-badge" style="background:var(--brand);color:#fff;">HQ</span>
+        </a>
         <a class="nav-item" data-view="sales">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M3 6h14M6 10h8M8 14h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
           <span>Sales / POS</span>
@@ -559,9 +564,114 @@
             </table>
           </div>
         </div>
+
+      </div><!-- /view-branch-comparison -->
+
+      <!-- ════════════ VIEW: ROLES & ACCESS (ENTERPRISE HQ) ════════════ -->
+      <div id="view-roles" class="view">
+        <div class="view-header">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span class="badge" style="background:var(--brand);color:#fff;font-weight:700;font-size:10.5px;padding:3px 8px;">ENTERPRISE HQ</span>
+              <h1 style="margin:0;">Roles &amp; Access Control</h1>
+            </div>
+            <p>Define custom staff roles, trust levels, and granular module permissions across all business locations</p>
+          </div>
+          <div class="view-actions">
+            <button class="btn-sm secondary" onclick="loadRoles()">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1 7a6 6 0 1011.3-2.8M13 1v4H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Refresh
+            </button>
+            <button class="btn-sm" onclick="openRoleModal()">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              Create New Role
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 SUMMARY STATUS CARDS -->
+        <div class="kpi-grid" style="margin-bottom:20px;">
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Total System Roles</span><div class="kpi-icon blue"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.5"/></svg></div></div>
+            <div class="kpi-value" id="roles-kpi-total">0</div>
+            <div class="kpi-trend up" id="roles-kpi-total-sub">Active in database</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Custom Roles</span><div class="kpi-icon green"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 2l6 3v5c0 4.5-2.8 8.4-6 9.5-3.2-1.1-6-5-6-9.5V5l6-3z" stroke="currentColor" stroke-width="1.5"/><path d="M10 7v4" stroke="currentColor" stroke-width="1.5"/></svg></div></div>
+            <div class="kpi-value" id="roles-kpi-custom">0</div>
+            <div class="kpi-trend up">Owner-defined rules</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Core Protected Roles</span><div class="kpi-icon purple"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 7V5a3 3 0 016 0v2" stroke="currentColor" stroke-width="1.5"/></svg></div></div>
+            <div class="kpi-value" id="roles-kpi-system">4</div>
+            <div class="kpi-trend up">Manager, Cashier, HR, Accountant</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Security Protocol</span><div class="kpi-icon amber"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 14L8 3l6 11H2z" stroke="currentColor" stroke-width="1.5"/><path d="M8 7v3m0 2h.01" stroke="currentColor" stroke-width="1.5"/></svg></div></div>
+            <div class="kpi-value" style="font-size:16px;">RBAC Active</div>
+            <div class="kpi-trend up">Server-side trust verification</div>
+          </div>
+        </div>
+
+        <!-- MAIN PANEL CARD -->
+        <div class="panel-card" style="padding:20px;">
+          <div class="panel-header" style="margin-bottom:20px;">
+            <div>
+              <h3 style="margin:0;">Configured Roles &amp; Permissions</h3>
+              <p style="font-size:12px;color:var(--text-muted);margin-top:2px;">Select any custom role to adjust module access or delete it</p>
+            </div>
+          </div>
+          <div id="roles-cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
+            <div style="text-align:center;padding:40px;color:var(--text-muted);grid-column:1/-1;">Loading roles...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ ROLE CREATE/EDIT MODAL ═══ -->
+      <div class="modal-overlay hidden" id="role-modal" onclick="closeModal('role-modal')">
+        <div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;">
+          <div class="modal-head">
+            <h3 id="role-modal-title">Create New Role</h3>
+            <button class="modal-close" onclick="closeModal('role-modal')"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+          </div>
+          <input type="hidden" id="role-modal-id" />
+          <div style="display:flex;flex-direction:column;gap:14px;padding:4px 0 8px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div>
+                <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Role Name *</label>
+                <input type="text" class="form-field-input" id="role-name" placeholder="e.g. Senior Cashier" style="width:100%;" />
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Backend Trust Level *</label>
+                <select class="form-field-input" id="role-base" style="width:100%;">
+                  <option value="manager">Manager-level (full operational access)</option>
+                  <option value="cashier" selected>Cashier-level (sales operations access)</option>
+                  <option value="hr">HR-level (HR &amp; payroll access)</option>
+                  <option value="accountant">Accountant-level (finance access)</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Description</label>
+              <input type="text" class="form-field-input" id="role-description" placeholder="Brief description of this role's responsibilities" style="width:100%;" />
+            </div>
+            <div style="border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--surface-alt,var(--surface));">
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Module Access Permissions</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;" id="role-perms-grid"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);padding:8px 10px;background:rgba(234,88,12,0.07);border-radius:6px;line-height:1.55;">
+              The <strong>Backend Trust Level</strong> controls which server-side APIs this role can call. Module permissions control which sections appear in the sidebar for assigned staff.
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn-sm secondary" onclick="closeModal('role-modal')">Cancel</button>
+            <button class="btn-sm" onclick="submitRoleModal()">Save Role</button>
+          </div>
+        </div>
       </div>
 
       <!-- ════════════ VIEW: SALES / POS ════════════ -->
+
       <div id="view-sales" class="view">
         <div class="view-header">
           <div>
@@ -2445,7 +2555,7 @@
               <div>
                 <label style="font-size:11px;font-weight:600;color:var(--text-muted);">Password</label>
                 <div class="password-input-wrap" style="margin-top:4px;">
-                  <input type="password" class="form-field-input" id="emp-login-password" placeholder="•••••••• (blank to keep)" style="width:100%;margin-top:0;" />
+                  <input type="password" class="form-field-input" id="emp-login-password" placeholder="•••••••• (blank to keep)" onfocus="if (this.value === '********') this.value = '';" onblur="if (!this.value && this.dataset.hasExisting === 'true') this.value = '********';" style="width:100%;margin-top:0;" />
                   <button type="button" class="password-toggle-btn" onclick="toggleEmpPasswordVisibility()" aria-label="Toggle password visibility" title="Show/Hide password">
                     <svg id="emp-eye-icon-closed" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
@@ -2457,14 +2567,16 @@
                     </svg>
                   </button>
                 </div>
+                <div id="emp-pwd-hint" style="font-size:10.5px;color:var(--text-muted);margin-top:4px;"></div>
               </div>
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--text-muted);">System Role</label>
               <select class="form-field-input" id="emp-login-role" style="width:100%;margin-top:4px;">
+                <option value="owner">Owner</option>
                 <option value="cashier">Cashier</option>
                 <option value="manager">Manager</option>
-                <option value="hr">HR</option>
+                <option value="hr">HR Officer</option>
                 <option value="accountant">Accountant</option>
               </select>
             </div>

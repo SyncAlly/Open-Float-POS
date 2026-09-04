@@ -100,6 +100,7 @@ app.use('/api/receivables',     require('./routes/receivables'));
 app.use('/api/upload',          require('./routes/upload'));
 app.use('/api/ai',              require('./routes/ai'));
 app.use('/api/mpesa',           require('./routes/mpesa'));
+app.use('/api/roles',           require('./routes/roles'));
 
 app.use((err, req, res, next) => {
   const isDev = process.env.NODE_ENV === 'development';

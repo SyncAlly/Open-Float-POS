@@ -175,7 +175,7 @@ async function upsertUserAccount(req, res) {
       if (name) { updates.push('name = ?'); params.push(name); }
       if (role) { updates.push('role = ?'); params.push(role); }
       if (branch_id !== undefined) { updates.push('branch_id = ?'); params.push(branch_id); }
-      if (password) {
+      if (password && password !== '********') {
         const passwordValidation = validatePassword(password.trim());
         if (!passwordValidation.valid) {
           return res.status(400).json({ error: passwordValidation.error });

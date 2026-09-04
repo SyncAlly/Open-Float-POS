@@ -8,13 +8,25 @@ async function getEmployees(req, res) {
   try {
     const db = await getDb();
     const { branch_id, status, search } = req.query;
-    let sql = `SELECT e.*, b.name AS branch_name FROM employees e LEFT JOIN branches b ON e.branch_id = b.id WHERE 1=1`;
+    let sql = `SELECT e.*, b.name AS branch_name, 0 AS is_owner_user FROM employees e LEFT JOIN branches b ON e.branch_id = b.id WHERE 1=1`;
     const params = [];
     if (branch_id) { sql += ' AND e.branch_id = ?'; params.push(branch_id); }
     if (status)    { sql += ' AND e.status = ?'; params.push(status); }
     if (search)    { sql += ' AND (e.name LIKE ? OR e.role LIKE ?)'; params.push('%' + search + '%', '%' + search + '%'); }
-    sql += ' ORDER BY e.name';
-    res.json({ success: true, data: query(db, sql, params) });
+    
+    let finalSql = sql;
+    let finalParams = [...params];
+    
+    if (req.user && req.user.role === 'owner') {
+      let ownerSql = `SELECT u.id + 100000 AS id, u.name, 'owner' AS role, u.branch_id, 0 AS salary, NULL AS phone, u.email, NULL AS hire_date, 'active' AS status, 100 AS attendance_pct, u.created_at, 0 AS hourly_rate, 0 AS commission_pct, 0 AS statutory_paye_pct, 0 AS statutory_nssf, 0 AS statutory_nhif, 0 AS benefits_deduction, b.name AS branch_name, 1 AS is_owner_user FROM users u LEFT JOIN branches b ON u.branch_id = b.id WHERE u.role = 'owner'`;
+      if (branch_id) { ownerSql += ' AND u.branch_id = ?'; finalParams.push(branch_id); }
+      if (search) { ownerSql += ' AND (u.name LIKE ? OR u.role LIKE ?)'; finalParams.push('%' + search + '%', '%' + search + '%'); }
+      finalSql = `SELECT * FROM (${sql} UNION ALL ${ownerSql}) ORDER BY name`;
+    } else {
+      finalSql += ' ORDER BY e.name';
+    }
+    
+    res.json({ success: true, data: query(db, finalSql, finalParams) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 }
 
@@ -43,11 +55,30 @@ async function createEmployee(req, res) {
 async function updateEmployee(req, res) {
   try {
     const db = await getDb();
-    const existing = query(db, 'SELECT * FROM employees WHERE id = ?', [req.params.id]);
+    const empId = parseInt(req.params.id, 10);
+    const fields = req.body;
+    
+    // If this is an owner virtual employee record (id >= 100000)
+    if (empId >= 100000) {
+       const uId = empId - 100000;
+       const existingOwner = query(db, 'SELECT * FROM users WHERE id = ? AND role = ?', [uId, 'owner']);
+       if (!existingOwner.length) return res.status(404).json({ error: 'Owner not found.' });
+       
+       const uSets = []; const uParams = [];
+       if (fields.name !== undefined) { uSets.push('name = ?'); uParams.push(fields.name); }
+       if (fields.email !== undefined) { uSets.push('email = ?'); uParams.push(fields.email.toLowerCase()); }
+       
+       if (uSets.length > 0) {
+         uParams.push(uId);
+         exec(db, `UPDATE users SET ${uSets.join(', ')} WHERE id = ?`, uParams);
+       }
+       return res.json({ success: true, message: 'Owner credentials updated.' });
+    }
+
+    const existing = query(db, 'SELECT * FROM employees WHERE id = ?', [empId]);
     if (!existing.length) return res.status(404).json({ error: 'Employee not found.' });
     const oldEmp = existing[0];
     const allowed = ['name','role','branch_id','salary','hourly_rate','commission_pct','statutory_paye_pct','statutory_nssf','statutory_nhif','benefits_deduction','phone','email','hire_date','status','attendance_pct'];
-    const fields = req.body;
     const sets = Object.keys(fields).filter(k => allowed.includes(k));
     if (!sets.length) return res.status(400).json({ error: 'No valid fields provided.' });
     const sql = `UPDATE employees SET ${sets.map(k => `${k} = ?`).join(', ')} WHERE id = ?`;

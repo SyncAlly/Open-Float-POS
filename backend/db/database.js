@@ -458,7 +458,31 @@ function createTables() {
     created_at TEXT DEFAULT (datetime('now'))
   )`); } catch (e) {}
 
+
+  // Dynamic Role & Permissions Builder — custom_roles table
+  try { _db.run(`CREATE TABLE IF NOT EXISTS custom_roles (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT,
+    base_role   TEXT NOT NULL DEFAULT 'cashier',
+    permissions TEXT NOT NULL DEFAULT '{}',
+    is_system   INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now'))
+  )`); } catch (e) {}
+
+  // Seed the 4 non-owner system roles so they appear in the Roles panel
+  const systemRoles = [
+    ['Manager',    'Full operational access to branch POS, inventory, procurement, HR, accounting and reporting.', 'manager',    '{"sales":true,"crm":true,"hire_purchase":true,"inventory":true,"procurement":true,"hr":true,"accounting":true,"suppliers":true,"z_reports":true,"logistics":true,"stock_movements":true,"services":true}'],
+    ['Cashier',    'Sales terminal, customer management, hire-purchase credit, logistics dispatch, and stock movements.', 'cashier',    '{"sales":true,"crm":true,"hire_purchase":true,"inventory":false,"procurement":false,"hr":false,"accounting":false,"suppliers":false,"z_reports":true,"logistics":true,"stock_movements":true,"services":false}'],
+    ['HR Officer', 'Human resources, attendance, payroll, and shift management only.', 'hr',         '{"sales":false,"crm":false,"hire_purchase":false,"inventory":false,"procurement":false,"hr":true,"accounting":false,"suppliers":false,"z_reports":false,"logistics":false,"stock_movements":false,"services":false}'],
+    ['Accountant', 'Accounting ledger, accounts receivable, suppliers, procurement, and Z-reports.', 'accountant', '{"sales":false,"crm":false,"hire_purchase":false,"inventory":false,"procurement":true,"hr":false,"accounting":true,"suppliers":true,"z_reports":true,"logistics":false,"stock_movements":false,"services":false}'],
+  ];
+  systemRoles.forEach(([name, desc, base, perms]) => {
+    try { _db.run(`INSERT OR IGNORE INTO custom_roles (name, description, base_role, permissions, is_system) VALUES (?, ?, ?, ?, 1)`, [name, desc, base, perms]); } catch (e) {}
+  });
+
   persist();
+
   console.log('[DB] Tables ready.');
 }
 

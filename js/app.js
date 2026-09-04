@@ -99,6 +99,11 @@ function toggleEmpPasswordVisibility() {
 
   if (!pwdInput) return;
 
+  if (pwdInput.value === '********') {
+    showToast('Existing passwords are encrypted for security and cannot be displayed. Type a new password to preview characters.', 3500);
+    return;
+  }
+
   const isPassword = pwdInput.type === 'password';
   pwdInput.type = isPassword ? 'text' : 'password';
 
@@ -190,6 +195,21 @@ function getDefaultViewForRole(role) {
   if (r === 'cashier') return 'sales';
   if (r === 'hr') return 'hr';
   if (r === 'accountant') return 'accounting';
+  if (r === 'owner') return 'dashboard';
+  if (r === 'manager') return 'dashboard';
+
+  if (_rolesCache && _rolesCache.length) {
+    const custom = _rolesCache.find(x => (x.name || '').toLowerCase() === r);
+    if (custom) {
+      try {
+        const p = typeof custom.permissions === 'string' ? JSON.parse(custom.permissions) : (custom.permissions || {});
+        if (p.sales) return 'sales';
+        if (p.hr) return 'hr';
+        if (p.accounting) return 'accounting';
+        if (p.inventory) return 'inventory';
+      } catch (_) {}
+    }
+  }
   return 'dashboard';
 }
 
@@ -287,23 +307,64 @@ function applyRolePermissions() {
   const role = (state.user.role || 'cashier').toLowerCase();
   const isHQMode = role === 'owner' && (!state.currentBranch || state.currentBranch.id === 'all');
 
-  // Role permissions map: view IDs allowed for each role
+  // Built-in system role permissions map
   const permissions = {
-    owner: isHQMode ? ['dashboard', 'branch-comparison', 'hr', 'ai', 'settings'] : ['*'],
+    owner: isHQMode ? ['dashboard', 'branch-comparison', 'roles', 'hr', 'ai', 'settings'] : ['*'],
     manager: ['*'],
     cashier: ['sales', 'crm', 'hire-purchase', 'z-reports', 'logistics', 'stock-movements'],
     hr: ['hr'],
     accountant: ['accounting', 'receivables', 'suppliers', 'z-reports', 'procurement']
   };
 
-  const allowedViews = permissions[role] || permissions.cashier;
+  let allowedViews = permissions[role];
+
+  // If role is not a built-in, look it up in _rolesCache
+  if (!allowedViews) {
+    if (_rolesCache && _rolesCache.length) {
+      const custom = _rolesCache.find(r => (r.name || '').toLowerCase() === role);
+      if (custom) {
+        try {
+          const p = typeof custom.permissions === 'string' ? JSON.parse(custom.permissions) : (custom.permissions || {});
+          allowedViews = ['dashboard'];
+          const viewMapping = {
+            sales: 'sales',
+            services: 'services',
+            crm: 'crm',
+            hire_purchase: 'hire-purchase',
+            inventory: 'inventory',
+            stock_movements: 'stock-movements',
+            procurement: 'procurement',
+            logistics: 'logistics',
+            accounting: 'accounting',
+            receivables: 'receivables',
+            suppliers: 'suppliers',
+            z_reports: 'z-reports',
+            hr: 'hr',
+            ai: 'ai'
+          };
+          Object.entries(p).forEach(([modKey, isAllowed]) => {
+            if (isAllowed && viewMapping[modKey]) {
+              allowedViews.push(viewMapping[modKey]);
+            }
+          });
+        } catch (err) {
+          console.warn('[applyRolePermissions] Error parsing custom role perms:', err);
+        }
+      }
+    } else if (state.token) {
+      // Roles cache not ready yet: fetch in background and re-apply
+      fetchRoles().then(() => applyRolePermissions());
+    }
+  }
+
+  if (!allowedViews) allowedViews = permissions.cashier;
   const isSuper = allowedViews.includes('*');
 
   // 1. Filter nav items
   document.querySelectorAll('.sidebar-nav .nav-item[data-view]').forEach(item => {
     const view = item.getAttribute('data-view');
-    // In individual branch mode, hide branch-comparison (it is an enterprise HQ tool)
-    if (view === 'branch-comparison' && !isHQMode) {
+    // In individual branch mode, hide enterprise HQ tools (branch-comparison and roles)
+    if ((view === 'branch-comparison' || view === 'roles') && !isHQMode) {
       item.style.display = 'none';
       return;
     }
@@ -766,6 +827,8 @@ function triggerViewLoad(viewId) {
     loadSettings();
   } else if (viewId === 'branch-comparison') {
     loadBranchComparisonView().then(() => { state.viewLoadedBranch['branch-comparison'] = curBranchId; });
+  } else if (viewId === 'roles') {
+    loadRoles();
   }
 }
 
@@ -1718,7 +1781,7 @@ async function loadBranchComparisonView() {
 
 function switchComparisonArea(area) {
   _compArea = area;
-  _compMetric = 'm1'; // reset to first metric
+  _compMetric = 'm1';
 
   // Update tabs
   ['sales', 'hr', 'inventory', 'channels'].forEach(a => {
@@ -1766,6 +1829,314 @@ function switchComparisonArea(area) {
 
   setCompPageMetric('m1');
 }
+
+/* ── ROLE & PERMISSION MANAGEMENT (OWNER HQ) ─────────────────────── */
+let _rolesCache = [];
+
+const ROLE_MODULES = [
+  { id: 'sales',           label: 'Sales Terminal & POS',            view: 'sales' },
+  { id: 'services',        label: 'Services Catalog',                view: 'services' },
+  { id: 'crm',             label: 'Customer CRM & Loyalty',          view: 'crm' },
+  { id: 'hire_purchase',   label: 'Hire Purchase / Credit Sales',    view: 'hire-purchase' },
+  { id: 'inventory',       label: 'Inventory & Catalog',             view: 'inventory' },
+  { id: 'stock_movements', label: 'Stock Movement Log',              view: 'stock-movements' },
+  { id: 'procurement',     label: 'Procurement & Purchase Requests', view: 'procurement' },
+  { id: 'logistics',       label: 'Logistics & Dispatch Tracking',   view: 'logistics' },
+  { id: 'accounting',      label: 'Accounting & Finance Ledger',     view: 'accounting' },
+  { id: 'receivables',     label: 'Accounts Receivable & Debts',     view: 'receivables' },
+  { id: 'suppliers',       label: 'Supplier Management',             view: 'suppliers' },
+  { id: 'z_reports',       label: 'Z-Reports & Closeout',            view: 'z-reports' },
+  { id: 'hr',              label: 'Human Resources & Shifts',        view: 'hr' },
+  { id: 'ai',              label: 'AI Business Assistant',           view: 'ai' }
+];
+
+function escapeRoleHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function fetchRoles() {
+  try {
+    const res = await fetch('/api/roles', {
+      headers: { 'Authorization': 'Bearer ' + (state.token || '') }
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (data.success && Array.isArray(data.data)) {
+      _rolesCache = data.data;
+      return _rolesCache;
+    }
+  } catch (err) {
+    console.warn('[fetchRoles] Error fetching roles:', err);
+  }
+  return [];
+}
+
+async function loadRoles() {
+  const grid = document.getElementById('roles-cards-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);grid-column:1/-1;">Loading roles...</div>';
+
+  const roles = await fetchRoles();
+  renderRolesGrid(roles);
+}
+
+function renderRolesGrid(roles) {
+  const grid = document.getElementById('roles-cards-grid');
+  if (!grid) return;
+
+  const totalEl = document.getElementById('roles-kpi-total');
+  const customEl = document.getElementById('roles-kpi-custom');
+  const systemEl = document.getElementById('roles-kpi-system');
+  if (totalEl) totalEl.textContent = (roles || []).length;
+  if (customEl) customEl.textContent = (roles || []).filter(r => !r.is_system).length;
+  if (systemEl) systemEl.textContent = (roles || []).filter(r => r.is_system).length;
+
+  if (!roles || !roles.length) {
+    grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);grid-column:1/-1;">No roles defined yet. Click "Create New Role" to get started.</div>';
+    return;
+  }
+
+  const baseRoleBadges = {
+    manager:    'background:rgba(59,130,246,0.1);color:#2563EB;border:1px solid rgba(59,130,246,0.25);',
+    cashier:    'background:rgba(16,185,129,0.1);color:#059669;border:1px solid rgba(16,185,129,0.25);',
+    hr:         'background:rgba(139,92,246,0.1);color:#7C3AED;border:1px solid rgba(139,92,246,0.25);',
+    accountant: 'background:rgba(245,158,11,0.1);color:#D97706;border:1px solid rgba(245,158,11,0.25);'
+  };
+
+  grid.innerHTML = roles.map(r => {
+    let perms = {};
+    try {
+      perms = typeof r.permissions === 'string' ? JSON.parse(r.permissions) : (r.permissions || {});
+    } catch (_) {}
+
+    const activeModuleLabels = ROLE_MODULES
+      .filter(m => !!perms[m.id])
+      .map(m => `<span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:4px;background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border);">${escapeRoleHtml(m.label)}</span>`)
+      .join('');
+
+    const baseStyle = baseRoleBadges[r.base_role] || 'background:var(--surface-2);color:var(--text-muted);';
+
+    return `
+      <div class="panel-card" style="display:flex;flex-direction:column;justify-content:space-between;padding:18px;border-radius:12px;box-shadow:var(--shadow-sm);border:1px solid var(--border);">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
+            <div>
+              <h4 style="margin:0;font-size:15px;font-weight:700;color:var(--text-primary);">${escapeRoleHtml(r.name)}</h4>
+              <p style="margin:4px 0 0;font-size:11.5px;color:var(--text-muted);line-height:1.4;">${escapeRoleHtml(r.description || 'No description.')}</p>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+              ${r.is_system 
+                ? `<span class="badge" style="background:var(--surface-2);color:var(--text-muted);font-size:10px;padding:2px 6px;">System</span>` 
+                : `<span class="badge badge-green" style="font-size:10px;padding:2px 6px;">Custom</span>`
+              }
+              <span class="badge" style="${baseStyle}font-size:10px;padding:2px 6px;text-transform:uppercase;font-weight:700;">${escapeRoleHtml(r.base_role)} API</span>
+            </div>
+          </div>
+
+          <div style="margin-top:12px;margin-bottom:14px;">
+            <div style="font-size:10.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Accessible Views:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">
+              ${activeModuleLabels || '<span style="font-size:11px;color:var(--text-muted);font-style:italic;">No views granted</span>'}
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:11px;color:var(--text-muted);">
+            ${r.is_system ? '🔒 Core system role' : 'Custom access rule'}
+          </span>
+          <div style="display:flex;gap:6px;">
+            ${r.is_system 
+              ? `<span style="font-size:11px;color:var(--text-muted);font-style:italic;padding:4px 0;">Protected</span>`
+              : `<button class="btn-sm secondary" style="padding:4px 9px;font-size:11px;" onclick="openRoleModal(${r.id})">Edit</button>
+                 <button class="btn-sm secondary" style="padding:4px 9px;font-size:11px;color:var(--red);" onclick="deleteRole(${r.id}, '${escapeRoleHtml(r.name).replace(/'/g, "\\'")}')">Delete</button>`
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderRolePermsCheckboxes(selectedPerms = {}) {
+  const container = document.getElementById('role-perms-grid');
+  if (!container) return;
+
+  container.innerHTML = ROLE_MODULES.map(m => {
+    const checked = selectedPerms[m.id] === true || selectedPerms[m.id] === 'true';
+    return `
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-primary);padding:3px 0;">
+        <input type="checkbox" id="role-perm-${m.id}" data-mod="${m.id}" ${checked ? 'checked' : ''} style="width:14px;height:14px;cursor:pointer;" />
+        <span>${escapeRoleHtml(m.label)}</span>
+      </label>
+    `;
+  }).join('');
+}
+
+function openRoleModal(id = null) {
+  const titleEl = document.getElementById('role-modal-title');
+  const idEl    = document.getElementById('role-modal-id');
+  const nameEl  = document.getElementById('role-name');
+  const baseEl  = document.getElementById('role-base');
+  const descEl  = document.getElementById('role-description');
+
+  if (!id) {
+    if (titleEl) titleEl.textContent = 'Create New Role';
+    if (idEl)    idEl.value = '';
+    if (nameEl)  { nameEl.value = ''; nameEl.disabled = false; }
+    if (baseEl)  baseEl.value = 'cashier';
+    if (descEl)  descEl.value = '';
+    renderRolePermsCheckboxes({ sales: true, crm: true, hire_purchase: true, z_reports: true, logistics: true, stock_movements: true });
+  } else {
+    const r = _rolesCache.find(x => x.id === id);
+    if (!r) return;
+    if (titleEl) titleEl.textContent = 'Edit Role: ' + r.name;
+    if (idEl)    idEl.value = r.id;
+    if (nameEl)  { nameEl.value = r.name; nameEl.disabled = !!r.is_system; }
+    if (baseEl)  baseEl.value = r.base_role;
+    if (descEl)  descEl.value = r.description || '';
+    let perms = {};
+    try {
+      perms = typeof r.permissions === 'string' ? JSON.parse(r.permissions) : (r.permissions || {});
+    } catch (_) {}
+    renderRolePermsCheckboxes(perms);
+  }
+
+  openModal('role-modal');
+}
+
+async function submitRoleModal() {
+  const id          = document.getElementById('role-modal-id')?.value.trim();
+  const name        = document.getElementById('role-name')?.value.trim();
+  const base_role   = document.getElementById('role-base')?.value || 'cashier';
+  const description = document.getElementById('role-description')?.value.trim();
+
+  if (!name) {
+    showToast('Role name is required.');
+    return;
+  }
+
+  const permissions = {};
+  ROLE_MODULES.forEach(m => {
+    const chk = document.getElementById(`role-perm-${m.id}`);
+    permissions[m.id] = !!chk?.checked;
+  });
+
+  const payload = { name, base_role, description, permissions };
+
+  try {
+    let res;
+    if (id) {
+      res = await fetch(`/api/roles/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (state.token || '')
+        },
+        body: JSON.stringify(payload)
+      }).then(r => r.json());
+    } else {
+      res = await fetch('/api/roles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (state.token || '')
+        },
+        body: JSON.stringify(payload)
+      }).then(r => r.json());
+    }
+
+    if (!res.success) {
+      showToast(res.error || 'Failed to save role.');
+      return;
+    }
+
+    showToast(id ? 'Role updated successfully ✓' : 'Role created successfully ✓');
+    closeModal('role-modal');
+    await loadRoles();
+    populateEmpRoleDropdown();
+  } catch (err) {
+    showToast('Error saving role: ' + err.message);
+  }
+}
+
+async function deleteRole(id, name) {
+  if (!confirm(`Are you sure you want to delete the "${name}" role?\n\nAny employees assigned this role will be safely reset to the default Cashier role.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/roles/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'Bearer ' + (state.token || '')
+      }
+    }).then(r => r.json());
+
+    if (!res.success) {
+      showToast(res.error || 'Failed to delete role.');
+      return;
+    }
+
+    showToast('Role deleted. Staff reset to Cashier.');
+    await loadRoles();
+    populateEmpRoleDropdown();
+  } catch (err) {
+    showToast('Error deleting role: ' + err.message);
+  }
+}
+
+function populateEmpRoleDropdown(selectedRole = 'cashier') {
+  const select = document.getElementById('emp-login-role');
+  if (!select) return;
+
+  const currentVal = (selectedRole || select.value || 'cashier').toLowerCase();
+  let optionsHtml = '';
+
+  if (state.user?.role === 'owner') {
+    optionsHtml += '<option value="owner">Owner</option>';
+  }
+
+  const systemOptions = [
+    { value: 'cashier',    label: 'Cashier' },
+    { value: 'manager',    label: 'Manager' },
+    { value: 'hr',         label: 'HR Officer' },
+    { value: 'accountant', label: 'Accountant' }
+  ];
+
+  systemOptions.forEach(opt => {
+    optionsHtml += `<option value="${opt.value}">${opt.label}</option>`;
+  });
+
+  if (_rolesCache && _rolesCache.length) {
+    const customOnly = _rolesCache.filter(r => !r.is_system);
+    if (customOnly.length) {
+      optionsHtml += '<optgroup label="Custom Roles">';
+      customOnly.forEach(r => {
+        optionsHtml += `<option value="${escapeRoleHtml(r.name)}">${escapeRoleHtml(r.name)} (${r.base_role.toUpperCase()} Trust)</option>`;
+      });
+      optionsHtml += '</optgroup>';
+    }
+  }
+
+  select.innerHTML = optionsHtml;
+  select.value = currentVal;
+  if (!select.value) {
+    for (let opt of select.options) {
+      if (opt.value.toLowerCase() === currentVal) {
+        select.value = opt.value;
+        break;
+      }
+    }
+  }
+}
+
+
 
 function setCompPageMetric(metric) {
   _compMetric = metric;
@@ -5514,9 +5885,12 @@ function renderEmployeeRows(items) {
       <td>KES ${Number(e.salary || 0).toLocaleString()}</td>
       <td>${e.attendance_pct || 100}%</td>
       <td style="white-space:nowrap;">
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openEmployeeModal(${e.id})">Edit</button>
-        <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openPayStubForEmployee(${e.id})">Pay Stub</button>
-        ${showDelete ? `<button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}
+        ${e.is_owner_user 
+          ? `<button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openEmployeeModal(${e.id})">Edit</button>`
+          : `<button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openEmployeeModal(${e.id})">Edit</button>
+             <button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;" onclick="openPayStubForEmployee(${e.id})">Pay Stub</button>
+             ${showDelete ? `<button class="btn-sm secondary" style="padding:3px 7px;font-size:11px;color:var(--red);" onclick="terminateEmployee(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}`
+        }
       </td>
     </tr>`;
   }).join('');
@@ -5567,11 +5941,24 @@ function openEmployeeModal(id = null) {
   const loginChk = document.getElementById('emp-create-login');
   const loginSection = document.getElementById('emp-login-section');
   const loginFields = document.getElementById('emp-login-fields');
+  const pwdInput = document.getElementById('emp-login-password');
+  const pwdHint = document.getElementById('emp-pwd-hint');
+  const eyeClosed = document.getElementById('emp-eye-icon-closed');
+  const eyeOpen = document.getElementById('emp-eye-icon-open');
+
   if (loginChk) loginChk.checked = false;
   if (loginFields) loginFields.style.display = 'none';
+  if (pwdInput) {
+    pwdInput.type = 'password';
+    pwdInput.dataset.hasExisting = 'false';
+  }
+  if (pwdHint) pwdHint.textContent = '';
+  if (eyeClosed) eyeClosed.classList.remove('hidden');
+  if (eyeOpen) eyeOpen.classList.add('hidden');
+
   setVal('emp-login-email', '');
   setVal('emp-login-password', '');
-  setVal('emp-login-role', 'cashier');
+  populateEmpRoleDropdown('cashier');
 
   if (id) {
     const e = _hrEmployeesCache.find(x => x.id == id);
@@ -5595,11 +5982,30 @@ function openEmployeeModal(id = null) {
       // Keep login section available when editing
       if (loginSection) loginSection.style.display = '';
       setVal('emp-login-email', e.email || '');
+      setVal('emp-login-password', e.email ? '********' : '');
+      if (pwdInput) {
+        pwdInput.dataset.hasExisting = e.email ? 'true' : 'false';
+      }
+      if (pwdHint && e.email) {
+        pwdHint.textContent = '🔒 Password saved & encrypted. Click to type a new password.';
+      }
+      if (loginChk && e.email) {
+        loginChk.checked = true;
+        if (loginFields) loginFields.style.display = 'flex';
+      }
 
-      const normRole = (e.role || '').toLowerCase().includes('manager') ? 'manager' :
-                       (e.role || '').toLowerCase().includes('hr') ? 'hr' :
-                       (e.role || '').toLowerCase().includes('account') ? 'accountant' : 'cashier';
-      setVal('emp-login-role', normRole);
+      // Check if e.role matches a known custom role or built-in role
+      let targetRole = (e.role || '').trim();
+      const lowerRole = targetRole.toLowerCase();
+      if (lowerRole.includes('owner')) {
+        targetRole = 'owner';
+      } else if (!(_rolesCache || []).some(r => (r.name || '').toLowerCase() === lowerRole)) {
+        if (lowerRole.includes('manager')) targetRole = 'manager';
+        else if (lowerRole.includes('hr')) targetRole = 'hr';
+        else if (lowerRole.includes('account')) targetRole = 'accountant';
+        else targetRole = 'cashier';
+      }
+      populateEmpRoleDropdown(targetRole);
     }
   } else {
     if (titleEl) titleEl.textContent = 'Add New Employee';
@@ -5656,7 +6062,8 @@ async function submitEmployeeModal() {
     // Process system login account creation / update
     const createLogin   = document.getElementById('emp-create-login')?.checked;
     const loginEmail    = document.getElementById('emp-login-email')?.value.trim();
-    const loginPassword = document.getElementById('emp-login-password')?.value.trim();
+    let loginPassword   = document.getElementById('emp-login-password')?.value.trim();
+    if (loginPassword === '********') loginPassword = '';
     const loginRole     = document.getElementById('emp-login-role')?.value || 'cashier';
 
     if (res.success && (createLogin || (id && loginEmail))) {
