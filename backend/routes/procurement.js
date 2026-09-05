@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { validate, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/procurementController');
 
 // GET  /api/procurement/suppliers         — active suppliers list
@@ -12,10 +13,10 @@ router.get('/suppliers', requireAuth, ctrl.getSuppliers);
 router.get('/requests', requireAuth, ctrl.getPurchaseRequests);
 
 // POST /api/procurement/requests          — submit new purchase request
-router.post('/requests', requireAuth, ctrl.createPurchaseRequest);
+router.post('/requests', requireAuth, validate(schemas.createPurchaseRequest), ctrl.createPurchaseRequest);
 
 // PATCH /api/procurement/requests/:id/status — approve/reject/deliver PR (owner/manager only)
-router.patch('/requests/:id/status', requireAuth, requireRole('owner', 'manager'), ctrl.updatePRStatus);
+router.patch('/requests/:id/status', requireAuth, requireRole('owner', 'manager'), validate(schemas.updatePOStatus), ctrl.updatePRStatus);
 
 // DELETE /api/procurement/requests/:id — delete PR
 router.delete('/requests/:id', requireAuth, requireRole('owner', 'manager'), ctrl.deletePurchaseRequest);

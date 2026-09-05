@@ -15,7 +15,7 @@ async function getCustomers(req, res) {
       WHERE 1=1
     `;
     const params = [];
-    if (branch_id && branch_id !== 'all') { sql += ' AND c.branch_id = ?'; params.push(branch_id); }
+    if (branch_id && branch_id !== 'all') { sql += ' AND (c.branch_id = ? OR c.branch_id IS NULL)'; params.push(branch_id); }
     if (segment) { sql += ' AND c.segment = ?'; params.push(segment); }
     if (search)  { sql += ' AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
 
@@ -54,10 +54,12 @@ async function createCustomer(req, res) {
     const { name, phone, email, credit_limit, segment, branch_id } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required.' });
 
+    const assignedBranch = branch_id || req.user?.branch_id || null;
+
     const result = exec(db,
       `INSERT INTO customers (name, phone, email, credit_limit, segment, branch_id)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, phone || null, email || null, credit_limit || 0, segment || 'regular', branch_id || null]);
+      [name, phone || null, email || null, credit_limit || 0, segment || 'regular', assignedBranch]);
 
     res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'Customer created.' });
   } catch (err) {
@@ -110,7 +112,7 @@ async function getCRMSummary(req, res) {
   try {
     const db = await getDb();
     const { branch_id } = req.query;
-    const whereClause = branch_id && branch_id !== 'all' ? 'WHERE branch_id = ?' : 'WHERE 1=1';
+    const whereClause = branch_id && branch_id !== 'all' ? 'WHERE (branch_id = ? OR branch_id IS NULL)' : 'WHERE 1=1';
     const params = branch_id && branch_id !== 'all' ? [branch_id] : [];
     const rows = query(db, `
       SELECT

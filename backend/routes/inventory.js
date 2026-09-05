@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { validate, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/inventoryController');
 
 const managerUp = requireRole('owner', 'manager');
@@ -23,13 +24,13 @@ router.get('/', requireAuth, ctrl.getProducts);
 router.get('/:id', requireAuth, ctrl.getProduct);
 
 // POST /api/inventory                — create product (manager/owner only)
-router.post('/', requireAuth, managerUp, ctrl.createProduct);
+router.post('/', requireAuth, managerUp, validate(schemas.createProduct), ctrl.createProduct);
 
 // PUT /api/inventory/:id             — update product (manager/owner only)
-router.put('/:id', requireAuth, managerUp, ctrl.updateProduct);
+router.put('/:id', requireAuth, managerUp, validate(schemas.updateProduct), ctrl.updateProduct);
 
 // PATCH /api/inventory/:id/stock     — adjust stock (manager/owner only)
-router.patch('/:id/stock', requireAuth, managerUp, ctrl.adjustStock);
+router.patch('/:id/stock', requireAuth, managerUp, validate(schemas.stockAdjustment), ctrl.adjustStock);
 
 // DELETE /api/inventory/:id          — delete single product (manager/owner)
 router.delete('/:id', requireAuth, managerUp, ctrl.deleteProduct);

@@ -16,7 +16,16 @@ function requireAuth(req, res, next) {
 
   // Allow demo tokens only in non-production environments.
   if (!isProduction() && token.startsWith('demo_')) {
-    req.user = { id: 1, name: 'Demo User', email: 'owner@openfloat.com', role: 'owner', branch_id: 1 };
+    const role = token.replace('demo_', '').toLowerCase();
+    const validRoles = ['owner', 'manager', 'cashier', 'hr', 'accountant'];
+    const assignedRole = validRoles.includes(role) ? role : 'owner';
+    req.user = {
+      id: assignedRole === 'owner' ? 1 : 3,
+      name: 'Demo ' + assignedRole.charAt(0).toUpperCase() + assignedRole.slice(1),
+      email: assignedRole + '@openfloat.com',
+      role: assignedRole,
+      branch_id: 1
+    };
     return next();
   }
 

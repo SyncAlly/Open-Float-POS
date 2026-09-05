@@ -114,3 +114,121 @@ Use the format below for all future entries:
   - Archived full technical walkthrough to `System walkthroughs/18_roles_and_access_dedicated_enterprise_hq_page.md` and refreshed `INDEX.md`.
 - Files affected: index.html, js/app.js, AGENT_CHANGELOG.md, System walkthroughs/18_roles_and_access_dedicated_enterprise_hq_page.md, System walkthroughs/INDEX.md
 
+## [2026-09-05] - Dedicated Print-Optimized Branch Comparison Report & PDF Export
+
+### Added
+- **Dedicated Executive Report Container (`#branch-comparison-report`)**: Added a print-only report container in `index.html` designed specifically for formal PDF generation, auditing, and printouts instead of capturing raw on-screen dashboard viewports.
+- **Dynamic Report Generator (`exportBranchComparisonReport()`)**: Implemented in `js/app.js` to compile live comparison metrics into a structured executive document:
+  - **Corporate Header & Metadata**: Enterprise branding, dynamic document reference number (`BCR-...`), active timeframe, generation timestamp, authorized officer credentials, and active branch scope.
+  - **Executive KPI Summary**: Grid containing consolidated enterprise revenue, top revenue-generating branch with percentage share, total workforce headcount with average attendance rate, and total inventory holding valuation with active low-stock alerts.
+  - **Visual Comparative Analytics**: High-resolution chart snapshots exported via `.toDataURL('image/png')` for both multi-branch comparative metrics and contribution donut distributions, preventing blank canvas rendering or browser layout distortions during print.
+  - **Comprehensive Multi-Store Benchmarking Matrix**: Full tabular matrix showing branch rankings, store name, location, revenue, revenue share %, order volume, average order value (AOV), staff headcount, attendance %, inventory valuation, and tiered performance badges, complete with enterprise totals/averages footer row.
+  - **Executive Observations & Notes**: Auto-generated business insights highlighting revenue leadership, operational volume, staffing health, and inventory replenishment priorities.
+  - **Formal Sign-off & Audit Trail**: Included dedicated signature blocks for Operations/Audit Lead and Managing Director/Owner, with confidentiality notice and pagination metadata.
+
+### Changed
+- **Export Report Action**: Updated the "Export Report" button in `index.html` (`#view-branch-comparison`) to trigger `exportBranchComparisonReport()` instead of raw unformatted `window.print()`.
+- **Print Stylesheet Optimization**: Scoped `@media print` in `css/style.css` to render `#branch-comparison-report` with strict multi-page layout rules (`break-inside: avoid`, clear table borders, grayscale-safe contrasts, and suppressed dashboard UI chrome).
+- **Files Affected**: `index.html`, `js/app.js`, `css/style.css`, `AGENT_CHANGELOG.md`.
+
+### 2026-09-05 | Input Schema Validation, String Bounding & Recursive XSS Sanitization
+- Scope: Backend API Security, Input Sanitization, Request Validation Layer (All API routes)
+- Summary:
+  - Implemented comprehensive input validation and XSS defense-in-depth across the entire backend using Joi v17.
+  - Built `backend/utils/sanitizer.js` with iterative HTML/script tag stripping (`scrubHtml`), whitespace trimming, length-bounding, and recursive object/array traversal (`sanitizeValue`), protecting password/secret fields from tag corruption.
+  - Mounted global Express middleware `sanitizeRequest` in `backend/server.js` to automatically sanitize all incoming `req.body`, `req.query`, and `req.params`.
+  - Built `backend/middleware/validation.js` leveraging a custom Joi extension that enforces string trimming, length bounds, HTML tag scrubbing, and unknown field stripping across API routes.
+  - Wired validation schemas across all core modules:
+    - Auth: `login`, `register`, `change-password`
+    - Inventory: `createProduct`, `updateProduct`, `stockAdjustment`
+    - Sales: `checkout`
+    - CRM: `createCustomer`, `updateCustomer`
+    - Suppliers: `createSupplier`, `updateSupplier`
+    - Services: `createService`, `updateService`
+    - Roles & RBAC: `createRole`, `updateRole`
+    - Branches: `createBranch`, `updateBranch`
+    - HR: `createEmployee`, `updateEmployee`
+    - Procurement: `createPurchaseRequest`, `updatePOStatus`
+    - Accounting: `createJournalEntry`
+    - Hire Purchase: `createHP`, `recordHPPayment`
+    - Receivables: `recordARPayment`
+    - Logistics: `createDelivery`, `updateDeliveryStatus`
+    - Settings: `updateSettings`
+    - AI: `aiChat`
+  - Created automated test suite in `backend/tests/validation.test.js` validating HTML tag stripping, script tag stripping, recursive scrubbing, password preservation, and Joi middleware route schemas.
+- Files affected:
+  - `backend/utils/sanitizer.js`
+  - `backend/middleware/validation.js`
+  - `backend/tests/validation.test.js`
+  - `backend/server.js`
+  - `backend/routes/auth.js`
+  - `backend/routes/inventory.js`
+  - `backend/routes/sales.js`
+  - `backend/routes/crm.js`
+  - `backend/routes/suppliers.js`
+  - `backend/routes/services.js`
+  - `backend/routes/roles.js`
+  - `backend/routes/branches.js`
+  - `backend/routes/hr.js`
+  - `backend/routes/procurement.js`
+  - `backend/routes/accounting.js`
+  - `backend/routes/hirePurchase.js`
+  - `backend/routes/receivables.js`
+  - `backend/routes/logistics.js`
+  - `backend/routes/settings.js`
+  - `backend/routes/ai.js`
+  - `AGENT_CHANGELOG.md`
+- Validation: All 11 unit tests in `backend/tests/validation.test.js` passed with 0 failures; verified server route modules load cleanly without errors.
+
+### 2026-09-05 | Fix Customer Segment Validation Mismatch
+- Scope: Input schema validation, CRM module
+- Summary: Expanded CRM customer schema whitelist to accept `'regular'` alongside `'retail'`, `'b2b'`, `'wholesale'`, and `'vip'`, aligning with frontend modal segment options and database default values.
+- Files affected:
+  - backend/middleware/validation.js
+  - AGENT_CHANGELOG.md
+- Validation: Unit test verification confirmed `{ name: 'Jane Doe', segment: 'regular' }` validates successfully with 0 errors.
+
+
+### 2026-09-05 | Centralized Security Audit Log (Who Did What)
+- Scope: Backend security, database schema, mutation tracking, audit log API
+- Summary:
+  - Created `audit_logs` table tracking `user_id`, `user_name`, `user_role`, `action`, `entity_type`, `entity_id`, `old_value`, `new_value`, `details`, `ip`, `branch_id`, and `timestamp`.
+  - Added centralized audit utility `backend/utils/auditLogger.js` and `/api/audit-logs` endpoint.
+  - Wired audit triggers across critical mutations: item voids, price overrides, manual stock adjustments, user role escalations, password changes, custom role alterations, and journal entries.
+- Files affected:
+  - backend/db/database.js
+  - backend/utils/auditLogger.js
+  - backend/routes/auditLogs.js
+  - backend/server.js
+  - backend/controllers/salesController.js
+  - backend/routes/sales.js
+  - backend/controllers/inventoryController.js
+  - backend/controllers/authController.js
+  - backend/controllers/rolesController.js
+  - backend/controllers/accountingController.js
+  - AGENT_CHANGELOG.md
+- Validation: Verified database table creation, controller audit event logging, and route permissions.
+
+### 2026-09-05 | CRM Customer Branch Association and Scoping Fix
+- Scope: CRM module, customer creation payload, branch querying
+- Summary:
+  - Updated `submitCustomerModal()` in `js/app.js` to attach active `branch_id` (`state.currentBranch?.id` or fallback `state.user?.branch_id`) to the creation payload.
+  - Updated `getCustomers()` and `getCRMSummary()` in `backend/controllers/crmController.js` so branch-filtered queries also return unassigned / global customers (`c.branch_id = ? OR c.branch_id IS NULL`).
+  - Added fallback in `createCustomer()` in `backend/controllers/crmController.js` to assign `req.user?.branch_id` if `branch_id` is omitted in the request body.
+- Files affected:
+  - `backend/controllers/crmController.js`
+  - `js/app.js`
+  - `AGENT_CHANGELOG.md`
+- Validation: Verified code changes and logic.
+
+
+### 2026-09-05 | Verification Audit & Schema Mismatch Fixes
+- Scope: Backend validation middleware, schema correctness, feature integration check
+- Summary: Performed a systematic end-to-end verification of all Sep 4-5 changes. Discovered and fixed 5 critical validation schema mismatches that were silently blocking core operations:
+  1. **Login schema field mismatch** — `schemas.login` required `username` (alphanum) but `authController.login()` reads `email`. Fixed to accept `email` field with email format validation.
+  2. **Register schema field mismatch** — `schemas.register` required `username` (alphanum) but controller reads `name` + `email`. Fixed to match controller field names and allowed roles list.
+  3. **changePassword field name mismatch** — Schema expected `oldPassword`/`newPassword` but controller reads `current_password`/`new_password`. Fixed field names in schema.
+  4. **Role creation schema type mismatch** — `schemas.createRole` expected `permissions` as an array of strings, but `rolesController` stores permissions as a JSON object (`{ sales: true, crm: true }`). Fixed to `Joi.object().pattern()` and added `base_role` field. Updated `updateRole` schema to match.
+  5. **Employee update field stripping** — `schemas.updateEmployee` was missing `hourly_rate`, `commission_pct`, `statutory_paye_pct`, `statutory_nssf`, `statutory_nhif`, and `benefits_deduction` fields. Joi's `stripUnknown: true` was silently dropping all payroll data on every employee update save. Fixed both `createEmployee` and `updateEmployee` schemas to include all payroll and statutory fields.
+- Files affected: `backend/middleware/validation.js`
+- Verification: All 9 test assertions passed after fixes; employee payroll fields confirmed saved to database (hourly_rate and commission_pct both correctly persisted).

@@ -1,5 +1,6 @@
 const { getDb, query, exec } = require('../db/database');
 const { downloadAndSaveImage } = require('../utils/imageDownloader');
+const { logAudit } = require('../utils/auditLogger');
 
 async function getProducts(req, res) {
   try {
@@ -132,10 +133,28 @@ async function updateProduct(req, res) {
 
     if (!sets.length) return res.status(400).json({ error: 'No valid fields to update.' });
 
+    const existingRows = query(db, 'SELECT * FROM products WHERE id = ?', [req.params.id]);
+    if (!existingRows.length) return res.status(404).json({ error: 'Product not found.' });
+    const existing = existingRows[0];
+
     const sql = `UPDATE products SET ${sets.map(k => `${k} = ?`).join(', ')}, updated_at = datetime('now') WHERE id = ?`;
     const result = exec(db, sql, [...sets.map(k => fields[k]), req.params.id]);
 
     if (!result.changes) return res.status(404).json({ error: 'Product not found.' });
+
+    // Audit log price or stock modifications
+    if (fields.sell_price !== undefined && parseFloat(fields.sell_price) !== parseFloat(existing.sell_price)) {
+      logAudit(req, {
+        action: 'PRICE_MODIFIED',
+        entity_type: 'product',
+        entity_id: req.params.id,
+        old_value: existing.sell_price,
+        new_value: fields.sell_price,
+        details: `Product "${existing.name}" (SKU: ${existing.sku}) selling price updated`,
+        branch_id: existing.branch_id
+      });
+    }
+
     res.json({ success: true, message: 'Product updated.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -155,6 +174,15 @@ async function adjustStock(req, res) {
     const newQty = Math.max(0, rows[0].stock_qty + parseInt(adjustment));
     exec(db, "UPDATE products SET stock_qty = ?, updated_at = datetime('now') WHERE id = ?",
       [newQty, req.params.id]);
+
+    logAudit(req, {
+      action: 'STOCK_ADJUSTMENT',
+      entity_type: 'product',
+      entity_id: req.params.id,
+      old_value: rows[0].stock_qty,
+      new_value: newQty,
+      details: `Manual stock adjustment of ${adjustment > 0 ? '+' + adjustment : adjustment} units. Reason: ${reason || 'Not specified'}`
+    });
 
     res.json({ success: true, previous_qty: rows[0].stock_qty, new_qty: newQty, adjustment });
   } catch (err) {

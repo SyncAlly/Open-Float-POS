@@ -2358,6 +2358,226 @@ function renderBranchComparisonMatrixTable() {
   }).join('');
 }
 
+function exportBranchComparisonReport() {
+  if (!_compDataCache || !_compDataCache.length) {
+    showToast('No branch comparison data available to export.');
+    return;
+  }
+
+  const reportContainer = document.getElementById('branch-comparison-report');
+  if (!reportContainer) {
+    console.error('[exportBranchComparisonReport] #branch-comparison-report element not found');
+    return;
+  }
+
+  const period = _compPeriod || 'all';
+  const periodMap = {
+    today: "Today",
+    week: "This Week",
+    month: "This Month",
+    year: "This Year",
+    all: "All-Time"
+  };
+  const periodLabel = periodMap[period] || "All-Time";
+
+  // Calculate Aggregates
+  const totalRev = _compDataCache.reduce((s, b) => s + getBranchMetricByPeriod(b, 'revenue', period), 0);
+  const totalOrders = _compDataCache.reduce((s, b) => s + getBranchMetricByPeriod(b, 'orders', period), 0);
+  const overallAvgOrder = totalOrders > 0 ? (totalRev / totalOrders) : 0;
+  const totalStaff = _compDataCache.reduce((s, b) => s + (b.staff_count || 0), 0);
+  const totalInv = _compDataCache.reduce((s, b) => s + (b.inventory_value || 0), 0);
+  const totalLowStock = _compDataCache.reduce((s, b) => s + (b.low_stock_count || 0), 0);
+
+  const sorted = [..._compDataCache].sort((a, b) => getBranchMetricByPeriod(b, 'revenue', period) - getBranchMetricByPeriod(a, 'revenue', period));
+  const topBranch = sorted[0]?.name || '—';
+  const topBranchRev = getBranchMetricByPeriod(sorted[0] || {}, 'revenue', period);
+  const topBranchShare = totalRev > 0 ? Math.round((topBranchRev / totalRev) * 100) : 0;
+
+  const avgAttendance = _compDataCache.length > 0
+    ? Math.round(_compDataCache.reduce((s, b) => s + (b.avg_attendance_pct || 0), 0) / _compDataCache.length)
+    : 0;
+
+  // Render Charts to Images if available
+  let mainChartImg = '';
+  let donutChartImg = '';
+  const mainCanvas = document.getElementById('compPageMainChart');
+  const donutCanvas = document.getElementById('compPageDonutChart');
+  if (mainCanvas) {
+    try { mainChartImg = mainCanvas.toDataURL('image/png'); } catch (_) {}
+  }
+  if (donutCanvas) {
+    try { donutChartImg = donutCanvas.toDataURL('image/png'); } catch (_) {}
+  }
+
+  const now = new Date();
+  const dateFormatted = now.toLocaleDateString('en-KE', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+  const timeFormatted = now.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
+  const docRef = 'BCR-' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + '-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+  const userName = (state.user?.name || 'Authorized Administrator');
+  const userRole = (state.user?.role || 'Owner').toUpperCase();
+
+  const tableRowsHtml = sorted.map((b, idx) => {
+    const rev = getBranchMetricByPeriod(b, 'revenue', period);
+    const tx = getBranchMetricByPeriod(b, 'orders', period);
+    const avg = getBranchMetricByPeriod(b, 'avg_order', period);
+    const staff = b.staff_count || 0;
+    const att = Math.round(b.avg_attendance_pct || 0);
+    const inv = b.inventory_value || 0;
+    const share = totalRev > 0 ? ((rev / totalRev) * 100).toFixed(1) : '0.0';
+
+    let tierBadge = '<span style="color:#059669;font-weight:700;">Top Tier</span>';
+    if (idx === 1) tierBadge = '<span style="color:#2563EB;font-weight:700;">Growth Leader</span>';
+    else if (idx > 1) tierBadge = '<span style="color:#D97706;font-weight:600;">Standard</span>';
+
+    return `
+      <tr>
+        <td style="font-weight:700;text-align:center;color:#ea580c;">#${idx + 1}</td>
+        <td><strong>${escapeRoleHtml(b.name)}</strong></td>
+        <td>${escapeRoleHtml(b.location || 'Branch Store')}</td>
+        <td style="text-align:right;font-weight:700;">KES ${fmt(Math.round(rev))}</td>
+        <td style="text-align:center;font-weight:600;">${share}%</td>
+        <td style="text-align:center;">${fmt(tx)}</td>
+        <td style="text-align:right;">KES ${fmt(Math.round(avg))}</td>
+        <td style="text-align:center;">${staff}</td>
+        <td style="text-align:center;">${att}%</td>
+        <td style="text-align:right;">KES ${fmt(Math.round(inv))}</td>
+        <td style="text-align:center;">${tierBadge}</td>
+      </tr>
+    `;
+  }).join('');
+
+  reportContainer.innerHTML = `
+    <div class="bcr-document">
+      <!-- 1. Header with branding & metadata -->
+      <div class="bcr-header">
+        <div class="bcr-header-brand">
+          <div class="bcr-logo-title">OPENFLOAT ENTERPRISE</div>
+          <div class="bcr-doc-title">Executive Branch Performance &amp; Benchmarking Report</div>
+          <div class="bcr-doc-subtitle">Cross-location comparative audit covering sales revenue, operational volume, staffing, and inventory health</div>
+        </div>
+        <div class="bcr-header-meta">
+          <table class="bcr-meta-table">
+            <tr><td><strong>Report Ref:</strong></td><td>${docRef}</td></tr>
+            <tr><td><strong>Timeframe:</strong></td><td>${periodLabel}</td></tr>
+            <tr><td><strong>Generated:</strong></td><td>${dateFormatted}, ${timeFormatted}</td></tr>
+            <tr><td><strong>Officer:</strong></td><td>${escapeRoleHtml(userName)} (${escapeRoleHtml(userRole)})</td></tr>
+            <tr><td><strong>Scope:</strong></td><td>${_compDataCache.length} Active Stores</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2. Executive KPI Summary Cards -->
+      <div class="bcr-section-title" style="margin-top:16px;">1. Executive Performance Summary</div>
+      <div class="bcr-kpi-grid">
+        <div class="bcr-kpi-card">
+          <div class="bcr-kpi-label">Enterprise Revenue</div>
+          <div class="bcr-kpi-value">KES ${fmt(Math.round(totalRev))}</div>
+          <div class="bcr-kpi-sub">${periodLabel} consolidated gross sales</div>
+        </div>
+        <div class="bcr-kpi-card">
+          <div class="bcr-kpi-label">Top Location</div>
+          <div class="bcr-kpi-value" style="font-size:12pt;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">${escapeRoleHtml(topBranch)}</div>
+          <div class="bcr-kpi-sub">KES ${fmt(Math.round(topBranchRev))} (${topBranchShare}% of total)</div>
+        </div>
+        <div class="bcr-kpi-card">
+          <div class="bcr-kpi-label">Total Workforce</div>
+          <div class="bcr-kpi-value">${totalStaff} Employees</div>
+          <div class="bcr-kpi-sub">Avg Attendance Rate: ${avgAttendance}%</div>
+        </div>
+        <div class="bcr-kpi-card">
+          <div class="bcr-kpi-label">Inventory Valuation</div>
+          <div class="bcr-kpi-value">KES ${fmt(Math.round(totalInv))}</div>
+          <div class="bcr-kpi-sub">${totalLowStock} Low stock alerts active</div>
+        </div>
+      </div>
+
+      <!-- 3. Visual Charts -->
+      ${(mainChartImg || donutChartImg) ? `
+      <div class="bcr-section-title" style="margin-top:16px;">2. Visual Comparative Analytics</div>
+      <div class="bcr-charts-grid">
+        ${mainChartImg ? `
+        <div class="bcr-chart-box">
+          <div class="bcr-chart-title">Branch Performance Comparison</div>
+          <img src="${mainChartImg}" alt="Performance Chart" style="width:100%;max-height:240px;object-fit:contain;" />
+        </div>` : ''}
+        ${donutChartImg ? `
+        <div class="bcr-chart-box" style="flex:0 0 36%;">
+          <div class="bcr-chart-title">Contribution Share</div>
+          <img src="${donutChartImg}" alt="Contribution Chart" style="width:100%;max-height:240px;object-fit:contain;" />
+        </div>` : ''}
+      </div>` : ''}
+
+      <!-- 4. Benchmarking Matrix Table -->
+      <div class="bcr-section-title" style="margin-top:16px;">3. Multi-Branch Benchmarking Matrix</div>
+      <table class="bcr-table">
+        <thead>
+          <tr>
+            <th style="width:40px;text-align:center;">Rank</th>
+            <th>Branch Name</th>
+            <th>Location</th>
+            <th style="text-align:right;">Revenue (${periodLabel})</th>
+            <th style="text-align:center;">Share</th>
+            <th style="text-align:center;">Orders</th>
+            <th style="text-align:right;">Avg Order</th>
+            <th style="text-align:center;">Staff</th>
+            <th style="text-align:center;">Attendance</th>
+            <th style="text-align:right;">Stock Value</th>
+            <th style="text-align:center;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRowsHtml}
+        </tbody>
+        <tfoot>
+          <tr class="bcr-total-row">
+            <td colspan="3"><strong>Enterprise Totals / Overall</strong></td>
+            <td style="text-align:right;"><strong>KES ${fmt(Math.round(totalRev))}</strong></td>
+            <td style="text-align:center;"><strong>100%</strong></td>
+            <td style="text-align:center;"><strong>${fmt(totalOrders)}</strong></td>
+            <td style="text-align:right;"><strong>KES ${fmt(Math.round(overallAvgOrder))}</strong></td>
+            <td style="text-align:center;"><strong>${totalStaff}</strong></td>
+            <td style="text-align:center;"><strong>${avgAttendance}%</strong></td>
+            <td style="text-align:right;"><strong>KES ${fmt(Math.round(totalInv))}</strong></td>
+            <td style="text-align:center;"><strong>${_compDataCache.length} Stores</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- 5. Executive Insights & Observations -->
+      <div class="bcr-section-title" style="margin-top:18px;">4. Management Notes &amp; Observations</div>
+      <div class="bcr-notes-box">
+        <ul>
+          <li><strong>Revenue Leadership:</strong> <strong>${escapeRoleHtml(topBranch)}</strong> generated the highest revenue share at <strong>KES ${fmt(Math.round(topBranchRev))}</strong> (${topBranchShare}% of enterprise revenue).</li>
+          <li><strong>Operational Volume:</strong> Enterprise completed <strong>${fmt(totalOrders)}</strong> transactions with an average order value of <strong>KES ${fmt(Math.round(overallAvgOrder))}</strong>.</li>
+          <li><strong>Workforce Capacity:</strong> Total headcount is <strong>${totalStaff}</strong> across <strong>${_compDataCache.length}</strong> active branches with a system-wide attendance rate of <strong>${avgAttendance}%</strong>.</li>
+          <li><strong>Stock Holding Risk:</strong> Total inventory valuation stands at <strong>KES ${fmt(Math.round(totalInv))}</strong>, with <strong>${totalLowStock}</strong> items currently triggering low-stock replenishment alerts.</li>
+        </ul>
+      </div>
+
+      <!-- 6. Signatures -->
+      <div class="bcr-signatures">
+        <div class="bcr-sig-box">
+          <div class="bcr-sig-line"></div>
+          <div class="bcr-sig-label">Prepared By: Operations / Audit Lead</div>
+        </div>
+        <div class="bcr-sig-box">
+          <div class="bcr-sig-line"></div>
+          <div class="bcr-sig-label">Approved By: Managing Director / Owner</div>
+        </div>
+      </div>
+
+      <!-- 7. Footer -->
+      <div class="bcr-footer">
+        <div>CONFIDENTIAL &bull; OPENFLOAT POS X ENTERPRISE HQ &bull; ALL RIGHTS RESERVED</div>
+        <div>Generated by OpenFloat System &bull; Document ${docRef}</div>
+      </div>
+    </div>
+  `;
+
+  // Trigger print dialog
+  window.print();
+}
+
 async function loadInventory() {
   const tbody = document.getElementById('inventory-tbody');
   try {
@@ -3163,7 +3383,18 @@ async function submitCustomerModal() {
 
   if (!name) { showToast('Customer name is required'); return; }
 
-  const payload = { name, phone, email, segment, credit_limit };
+  const activeBranchId = (state.currentBranch?.id && state.currentBranch.id !== 'all')
+    ? Number(state.currentBranch.id)
+    : (state.user?.branch_id ? Number(state.user.branch_id) : null);
+
+  const payload = {
+    name,
+    phone,
+    email,
+    segment,
+    credit_limit,
+    ...(activeBranchId ? { branch_id: activeBranchId } : {})
+  };
 
   try {
     let res;

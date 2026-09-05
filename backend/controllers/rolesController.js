@@ -1,6 +1,7 @@
 ﻿/** MODULE: Roles & Permissions Controller */
 
 const { getDb, query, exec } = require('../db/database');
+const { logAudit } = require('../utils/auditLogger');
 
 const SYSTEM_ROLE_NAMES = ['owner', 'manager', 'cashier', 'hr', 'accountant', 'hr officer'];
 
@@ -28,6 +29,15 @@ async function createRole(req, res) {
       'INSERT INTO custom_roles (name, description, base_role, permissions, is_system) VALUES (?, ?, ?, ?, 0)',
       [name.trim(), description || '', base_role, permsJson]
     );
+
+    logAudit(req, {
+      action: 'ROLE_CREATED',
+      entity_type: 'role',
+      entity_id: result.lastInsertRowid,
+      new_value: { name: name.trim(), base_role, permissions: permsJson },
+      details: `Custom role "${name.trim()}" created based on ${base_role}`
+    });
+
     res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE')) {
@@ -65,6 +75,16 @@ async function updateRole(req, res) {
         req.params.id
       ]
     );
+
+    logAudit(req, {
+      action: 'ROLE_UPDATED',
+      entity_type: 'role',
+      entity_id: req.params.id,
+      old_value: { name: existing[0].name, base_role: existing[0].base_role, permissions: existing[0].permissions },
+      new_value: { name: (name || existing[0].name).trim(), base_role: base_role || existing[0].base_role, permissions: permsJson },
+      details: `Custom role "${existing[0].name}" updated`
+    });
+
     res.json({ success: true, message: 'Role updated.' });
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE')) {
@@ -83,6 +103,15 @@ async function deleteRole(req, res) {
 
     exec(db, 'UPDATE users SET role = \'cashier\' WHERE LOWER(role) = LOWER(?)', [existing[0].name]);
     exec(db, 'DELETE FROM custom_roles WHERE id = ?', [req.params.id]);
+
+    logAudit(req, {
+      action: 'ROLE_DELETED',
+      entity_type: 'role',
+      entity_id: req.params.id,
+      old_value: { name: existing[0].name, base_role: existing[0].base_role },
+      details: `Custom role "${existing[0].name}" deleted. Affected users reset to cashier.`
+    });
+
     res.json({ success: true, message: 'Role deleted. Affected users have been reset to Cashier.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 }

@@ -1,6 +1,7 @@
 /** MODULE 8: Accounting Controller — Cashflow, Ledgers (AR/AP), Financial Stats */
 
 const { getDb, query, exec } = require('../db/database');
+const { logAudit } = require('../utils/auditLogger');
 
 async function getFinancialOverview(req, res) {
   try {
@@ -85,6 +86,15 @@ async function createJournalEntry(req, res) {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [ref, type, category || 'general', description, amount, branch_id || null, req.user ? req.user.id : null]
     );
+
+    logAudit(req, {
+      action: 'JOURNAL_ENTRY_CREATED',
+      entity_type: 'accounting',
+      entity_id: ref,
+      new_value: { type, category: category || 'general', description, amount, branch_id: branch_id || null },
+      details: `Recorded journal entry ${ref}: [${type.toUpperCase()}] ${description} - KES ${amount}`,
+      branch_id: branch_id || null
+    });
 
     res.status(201).json({ success: true, id: result.lastInsertRowid, ref, message: 'Journal entry recorded.' });
   } catch (err) {

@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { validate, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/hrController');
 
 const anyStaff  = requireRole('owner', 'manager', 'hr', 'cashier');
@@ -24,8 +25,8 @@ router.get('/labor-analytics', requireAuth, managerUp, ctrl.getLaborAnalytics);
 // Employees
 router.get('/employees',       requireAuth, anyStaff,  ctrl.getEmployees);
 router.get('/employees/:id',   requireAuth, anyStaff,  ctrl.getEmployee);
-router.post('/employees',      requireAuth, managerUp, ctrl.createEmployee);
-router.put('/employees/:id',   requireAuth, managerUp, ctrl.updateEmployee);
+router.post('/employees',      requireAuth, managerUp, validate(schemas.createEmployee), ctrl.createEmployee);
+router.put('/employees/:id',   requireAuth, managerUp, validate(schemas.updateEmployee), ctrl.updateEmployee);
 router.delete('/employees/:id',requireAuth, requireRole('owner'), ctrl.deleteEmployee);
 
 module.exports = router;

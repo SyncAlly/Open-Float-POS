@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { getDb, query, exec } = require('../db/database');
 const { getJwtSecret, isStrongPassword, passwordPolicyError } = require('../utils/security');
+const { logAudit } = require('../utils/auditLogger');
 
 const JWT_EXPIRES = '8h';
 
@@ -110,6 +111,13 @@ async function changePassword(req, res) {
     const newHash = await bcrypt.hash(new_password, 10);
     exec(db, 'UPDATE users SET password_hash = ? WHERE id = ?', [newHash, req.user.id]);
 
+    logAudit(req, {
+      action: 'PASSWORD_CHANGED',
+      entity_type: 'user',
+      entity_id: req.user.id,
+      details: `User ${req.user.name || req.user.email} updated their account password`
+    });
+
     res.json({ success: true, message: 'Password updated successfully.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -139,6 +147,14 @@ async function register(req, res) {
     const result = exec(db,
       'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
       [name, email.toLowerCase(), hash, role || 'cashier', branch_id || null]);
+
+    logAudit(req, {
+      action: 'USER_REGISTERED',
+      entity_type: 'user',
+      entity_id: result.lastInsertRowid,
+      new_value: { name, email: email.toLowerCase(), role: role || 'cashier', branch_id: branch_id || null },
+      details: `New user account created: "${name}" (${email}) with role ${role || 'cashier'}`
+    });
 
     res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'User created.' });
   } catch (err) {
@@ -188,6 +204,17 @@ async function upsertUserAccount(req, res) {
       if (updates.length > 0) {
         params.push(email.toLowerCase());
         exec(db, `UPDATE users SET ${updates.join(', ')} WHERE LOWER(email) = ?`, params);
+
+        if (role && role !== existing[0].role) {
+          logAudit(req, {
+            action: 'USER_ROLE_CHANGED',
+            entity_type: 'user',
+            entity_id: existing[0].id,
+            old_value: existing[0].role,
+            new_value: role,
+            details: `User role for account "${email}" changed from ${existing[0].role} to ${role}`
+          });
+        }
       }
       return res.json({ success: true, message: 'User login account updated.', action: 'updated' });
     }

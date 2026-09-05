@@ -3,16 +3,17 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { validate, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/logisticsController');
 
 // GET   /api/logistics/deliveries         — List active/historical deliveries
 router.get('/deliveries', requireAuth, ctrl.getDeliveries);
 
 // POST  /api/logistics/deliveries         — Dispatch new delivery order
-router.post('/deliveries', requireAuth, ctrl.createDelivery);
+router.post('/deliveries', requireAuth, validate(schemas.createDelivery), ctrl.createDelivery);
 
 // PATCH /api/logistics/deliveries/:id/status — Update status/driver/ETA
-router.patch('/deliveries/:id/status', requireAuth, ctrl.updateDeliveryStatus);
+router.patch('/deliveries/:id/status', requireAuth, validate(schemas.updateDeliveryStatus), ctrl.updateDeliveryStatus);
 
 // DELETE /api/logistics/deliveries/:id — Delete delivery record
 router.delete('/deliveries/:id', requireAuth, requireRole('owner', 'manager'), ctrl.deleteDelivery);

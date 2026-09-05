@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { validate, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/accountingController');
 
 const managerUp = requireRole('owner', 'manager');
@@ -17,6 +18,6 @@ router.get('/ledgers', requireAuth, managerUp, ctrl.getARAPLedgers);
 router.get('/entries', requireAuth, managerUp, ctrl.getJournalEntries);
 
 // POST /api/accounting/entries       — Create manual journal entry (owner/manager only)
-router.post('/entries', requireAuth, managerUp, ctrl.createJournalEntry);
+router.post('/entries', requireAuth, managerUp, validate(schemas.createJournalEntry), ctrl.createJournalEntry);
 
 module.exports = router;

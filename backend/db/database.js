@@ -379,8 +379,27 @@ function createTables() {
       closing_cash  REAL DEFAULT 0,
       created_at    TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER,
+      user_name   TEXT,
+      user_role   TEXT,
+      action      TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id   TEXT,
+      old_value   TEXT,
+      new_value   TEXT,
+      details     TEXT,
+      branch_id   INTEGER,
+      ip_address  TEXT,
+      created_at  TEXT DEFAULT (datetime('now'))
+    );
   `);
   // Migrations for existing databases
+  try { _db.run("ALTER TABLE transactions ADD COLUMN voided_at TEXT"); } catch (e) {}
+  try { _db.run("ALTER TABLE transactions ADD COLUMN voided_by TEXT"); } catch (e) {}
+  try { _db.run("ALTER TABLE transactions ADD COLUMN void_reason TEXT"); } catch (e) {}
   try { _db.run("ALTER TABLE products ADD COLUMN image_url TEXT"); } catch (e) {}
   try { _db.run("ALTER TABLE products ADD COLUMN branch_id INTEGER DEFAULT 1"); } catch (e) {}
   try { _db.run("UPDATE products SET branch_id = 1 WHERE branch_id IS NULL"); } catch (e) {}

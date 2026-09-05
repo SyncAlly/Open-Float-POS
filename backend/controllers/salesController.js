@@ -1,6 +1,7 @@
 /** MODULE 6: Sales Terminal Controller — Transactions & POS Checkout */
 
 const { getDb, query, exec } = require('../db/database');
+const { logAudit } = require('../utils/auditLogger');
 
 async function processCheckout(req, res) {
   try {
@@ -128,6 +129,44 @@ async function processCheckout(req, res) {
       }
     }
 
+    // Audit log: Price Override or Discount check
+    let hasPriceOverride = false;
+    for (const vItem of verifiedItems) {
+      if (vItem.discount > 0) {
+        hasPriceOverride = true;
+        await logAudit(req, {
+          action: 'PRICE_OVERRIDE',
+          entity_type: 'transaction',
+          entity_id: ref,
+          old_value: { catalog_price: vItem.unit_price, qty: vItem.qty },
+          new_value: { discount: vItem.discount, final_line_total: vItem.line_total },
+          details: `Price override/discount on '${vItem.name}' (Discount: KES ${vItem.discount}) in Sale ${ref}`,
+          branch_id: finalBranchId
+        });
+      }
+    }
+
+    if (appliedDiscount > 0 && !hasPriceOverride) {
+      await logAudit(req, {
+        action: 'DISCOUNT_APPLIED',
+        entity_type: 'transaction',
+        entity_id: ref,
+        old_value: { subtotal },
+        new_value: { discount: appliedDiscount, total },
+        details: `Overall transaction discount KES ${appliedDiscount} applied on Sale ${ref}`,
+        branch_id: finalBranchId
+      });
+    }
+
+    await logAudit(req, {
+      action: 'SALE_COMPLETED',
+      entity_type: 'transaction',
+      entity_id: ref,
+      new_value: { total, payment_method: payment_method || 'cash', item_count: verifiedItems.length },
+      details: `Completed sale ${ref} (KES ${total}) via ${payment_method || 'cash'}`,
+      branch_id: finalBranchId
+    });
+
     res.status(201).json({
       success: true,
       ref,
@@ -206,4 +245,80 @@ async function getTransactionDetail(req, res) {
   }
 }
 
-module.exports = { processCheckout, getTransactions, getTransactionDetail };
+async function voidTransaction(req, res) {
+  try {
+    const db = await getDb();
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    const rows = query(db, 'SELECT * FROM transactions WHERE id = ? OR ref = ?', [id, id]);
+    if (!rows.length) return res.status(404).json({ error: 'Transaction not found.' });
+
+    const tx = rows[0];
+    if (tx.status === 'voided') {
+      return res.status(400).json({ error: 'Transaction is already voided.' });
+    }
+
+    const items = query(db, `
+      SELECT ti.*, p.name AS product_name, p.sku
+      FROM transaction_items ti
+      LEFT JOIN products p ON ti.product_id = p.id
+      WHERE ti.transaction_id = ?
+    `, [tx.id]);
+
+    const voidTime = new Date().toISOString();
+    const voidedBy = req.user ? req.user.name : 'Authorized Staff';
+    const voidReason = reason || 'Manager Void';
+
+    // 1. Update status to voided
+    exec(db, `
+      UPDATE transactions
+      SET status = 'voided', voided_at = ?, voided_by = ?, void_reason = ?
+      WHERE id = ?
+    `, [voidTime, voidedBy, voidReason, tx.id]);
+
+    // 2. Return stock to inventory & record stock movements
+    for (const it of items) {
+      if (it.product_id) {
+        exec(db, 'UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?', [it.qty, it.product_id]);
+        try {
+          const movRef = `MOV-${Math.floor(1000 + Math.random() * 9000)}`;
+          exec(db,
+            `INSERT INTO stock_movements (ref, product_id, product_name, sku, movement_type, qty_change, reason, recorded_by, branch_id)
+             VALUES (?, ?, ?, ?, 'VOID_RETURN', ?, ?, ?, ?)`,
+            [movRef, it.product_id, it.product_name || 'Product', it.sku || '', it.qty, `Voided Txn: ${tx.ref} (${voidReason})`, voidedBy, tx.branch_id]
+          );
+        } catch (movErr) {}
+      }
+    }
+
+    // 3. Deduct loyalty points if awarded
+    if (tx.customer_id) {
+      const earnedPoints = Math.floor(tx.total / 100);
+      if (earnedPoints > 0) {
+        exec(db, 'UPDATE customers SET loyalty_points = MAX(0, loyalty_points - ?) WHERE id = ?', [earnedPoints, tx.customer_id]);
+      }
+    }
+
+    // 4. Centralized Immutable Audit Log
+    await logAudit(req, {
+      action: 'TRANSACTION_VOIDED',
+      entity_type: 'transaction',
+      entity_id: tx.ref,
+      old_value: { status: tx.status, total: tx.total },
+      new_value: { status: 'voided', void_reason: voidReason, voided_by: voidedBy },
+      details: `Voided transaction ${tx.ref} (KES ${tx.total}) - Reason: ${voidReason}`,
+      branch_id: tx.branch_id
+    });
+
+    res.json({
+      success: true,
+      message: `Transaction ${tx.ref} voided successfully and inventory restored.`,
+      transaction: { ...tx, status: 'voided', voided_at: voidTime, voided_by: voidedBy, void_reason: voidReason }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { processCheckout, getTransactions, getTransactionDetail, voidTransaction };

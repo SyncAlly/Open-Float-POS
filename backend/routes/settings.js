@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { validate, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/settingsController');
 
 // GET /api/settings        — all settings (all authenticated staff)
@@ -12,7 +13,7 @@ router.get('/', requireAuth, ctrl.getSettings);
 router.get('/:key', requireAuth, ctrl.getSetting);
 
 // PUT /api/settings        — update settings (owner only — M-Pesa keys, VAT, etc.)
-router.put('/', requireAuth, requireRole('owner'), ctrl.updateSettings);
-router.post('/', requireAuth, requireRole('owner'), ctrl.updateSettings);
+router.put('/', requireAuth, requireRole('owner'), validate(schemas.updateSettings), ctrl.updateSettings);
+router.post('/', requireAuth, requireRole('owner'), validate(schemas.updateSettings), ctrl.updateSettings);
 
 module.exports = router;

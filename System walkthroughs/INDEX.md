@@ -1,4 +1,4 @@
-# OpenFloat POS X — System Walkthroughs Index
+# OpenFloat POS X ? System Walkthroughs Index
 
 This directory permanently archives all technical feature walkthroughs generated for the OpenFloat POS X enterprise platform.
 
@@ -22,3 +22,4 @@ This directory permanently archives all technical feature walkthroughs generated
 | 16 | Payroll, Overtime & Shift Differentials Configuration | [16_payroll_overtime_shift_differentials_configuration.md](16_payroll_overtime_shift_differentials_configuration.md) |
 | 17 | Dynamic Role & Permissions Builder Walkthrough | [17_dynamic_role_permissions_builder_walkthrough.md](17_dynamic_role_permissions_builder_walkthrough.md) |
 | 18 | # Roles & Access Control Dedicated Enterprise HQ Page | [18_roles_and_access_dedicated_enterprise_hq_page.md](18_roles_and_access_dedicated_enterprise_hq_page.md) |
+| 19 | # Verification Audit & Validation Schema Mismatch Fixes | [19_verification_audit_and_schema_fixes.md](19_verification_audit_and_schema_fixes.md) |

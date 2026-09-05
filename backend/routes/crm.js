@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { validate, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/crmController');
 
 // GET /api/crm/summary          — loyalty & customer summary
@@ -18,10 +19,10 @@ router.get('/customers', requireAuth, ctrl.getCustomers);
 router.get('/customers/:id', requireAuth, ctrl.getCustomer);
 
 // POST /api/crm/customers
-router.post('/customers', requireAuth, ctrl.createCustomer);
+router.post('/customers', requireAuth, validate(schemas.createCustomer), ctrl.createCustomer);
 
 // PUT /api/crm/customers/:id
-router.put('/customers/:id', requireAuth, ctrl.updateCustomer);
+router.put('/customers/:id', requireAuth, validate(schemas.updateCustomer), ctrl.updateCustomer);
 
 // DELETE /api/crm/customers/:id
 router.delete('/customers/:id', requireAuth, requireRole('owner', 'manager'), ctrl.deleteCustomer);
